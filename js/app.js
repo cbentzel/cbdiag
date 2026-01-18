@@ -214,6 +214,58 @@
     // ============================================
     // Connection Functions
     // ============================================
+
+    // Get the center point of a specific side of a block
+    function getAnchorPoint(block, side) {
+        const center = getBlockCenter(block);
+        switch (side) {
+            case 'top':
+                return { x: center.x, y: block.y };
+            case 'bottom':
+                return { x: center.x, y: block.y + block.height };
+            case 'left':
+                return { x: block.x, y: center.y };
+            case 'right':
+                return { x: block.x + block.width, y: center.y };
+            default:
+                return center;
+        }
+    }
+
+    // Determine the best side to connect from based on relative positions
+    function getBestSides(fromBlock, toBlock) {
+        const fromCenter = getBlockCenter(fromBlock);
+        const toCenter = getBlockCenter(toBlock);
+
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+
+        let fromSide, toSide;
+
+        // Determine based on which axis has greater distance
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            // Horizontal connection (or default for equal/zero)
+            if (dx >= 0) {
+                fromSide = 'right';
+                toSide = 'left';
+            } else {
+                fromSide = 'left';
+                toSide = 'right';
+            }
+        } else {
+            // Vertical connection
+            if (dy > 0) {
+                fromSide = 'bottom';
+                toSide = 'top';
+            } else {
+                fromSide = 'top';
+                toSide = 'bottom';
+            }
+        }
+
+        return { fromSide, toSide };
+    }
+
     function createConnection(fromBlockId, toBlockId) {
         if (fromBlockId === toBlockId) return null;
 
@@ -224,10 +276,19 @@
         );
         if (exists) return null;
 
+        const fromBlock = state.blocks.find(b => b.id === fromBlockId);
+        const toBlock = state.blocks.find(b => b.id === toBlockId);
+        if (!fromBlock || !toBlock) return null;
+
+        // Determine which sides to connect
+        const { fromSide, toSide } = getBestSides(fromBlock, toBlock);
+
         const conn = {
             id: generateId('conn'),
             fromBlockId,
-            toBlockId
+            toBlockId,
+            fromSide,
+            toSide
         };
         state.connections.push(conn);
         renderConnection(conn);
@@ -242,44 +303,26 @@
         const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
         if (!fromBlock || !toBlock) return;
 
-        const from = getBlockCenter(fromBlock);
-        const to = getBlockCenter(toBlock);
+        // Use stored sides, or calculate if not present (backwards compatibility)
+        let fromSide = conn.fromSide;
+        let toSide = conn.toSide;
+        if (!fromSide || !toSide) {
+            const sides = getBestSides(fromBlock, toBlock);
+            fromSide = sides.fromSide;
+            toSide = sides.toSide;
+        }
 
-        // Calculate edge intersection points
-        const fromEdge = getEdgePoint(fromBlock, to);
-        const toEdge = getEdgePoint(toBlock, from);
+        const fromPoint = getAnchorPoint(fromBlock, fromSide);
+        const toPoint = getAnchorPoint(toBlock, toSide);
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('id', conn.id);
         path.setAttribute('class', 'connection');
-        path.setAttribute('d', `M ${fromEdge.x} ${fromEdge.y} L ${toEdge.x} ${toEdge.y}`);
+        path.setAttribute('d', `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`);
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
 
         connectionsLayer.appendChild(path);
-    }
-
-    function getEdgePoint(block, target) {
-        const center = getBlockCenter(block);
-        const dx = target.x - center.x;
-        const dy = target.y - center.y;
-
-        const halfWidth = block.width / 2;
-        const halfHeight = block.height / 2;
-
-        let x, y;
-
-        if (Math.abs(dx) * halfHeight > Math.abs(dy) * halfWidth) {
-            // Intersects left or right edge
-            x = center.x + Math.sign(dx) * halfWidth;
-            y = center.y + (dy * halfWidth) / Math.abs(dx);
-        } else {
-            // Intersects top or bottom edge
-            x = center.x + (dx * halfHeight) / Math.abs(dy);
-            y = center.y + Math.sign(dy) * halfHeight;
-        }
-
-        return { x, y };
     }
 
     function updateConnectionsForBlock(blockId) {
@@ -420,8 +463,10 @@
             connectionsLayer.appendChild(tempLine);
         }
 
-        const from = getBlockCenter(fromBlock);
-        const fromEdge = getEdgePoint(fromBlock, toPoint);
+        // Create a temporary "block" to determine best side
+        const tempBlock = { x: toPoint.x, y: toPoint.y, width: 0, height: 0 };
+        const { fromSide } = getBestSides(fromBlock, tempBlock);
+        const fromEdge = getAnchorPoint(fromBlock, fromSide);
         tempLine.setAttribute('d', `M ${fromEdge.x} ${fromEdge.y} L ${toPoint.x} ${toPoint.y}`);
     }
 
