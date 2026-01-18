@@ -8,17 +8,24 @@
     // State
     // ============================================
     const state = {
+        // All diagrams
+        diagrams: [],
+        currentDiagramId: null,
+
+        // Current diagram data (references for convenience)
         blocks: [],
         connections: [],
+        nextBlockId: 1,
+        nextConnectionId: 1,
+        viewBox: { x: 0, y: 0, width: 1200, height: 800 },
+
+        // UI state
         selectedBlockId: null,
         selectedConnectionId: null,
         mode: 'select', // 'select', 'connecting'
         connectionStart: null,
-        nextBlockId: 1,
-        nextConnectionId: 1,
 
         // Pan/zoom state
-        viewBox: { x: 0, y: 0, width: 1200, height: 800 },
         isPanning: false,
         panStart: { x: 0, y: 0 },
 
@@ -28,31 +35,263 @@
 
         // Resize state
         isResizing: false,
-        resizeStart: { x: 0, y: 0, width: 0, height: 0 }
+        resizeStart: { x: 0, y: 0, width: 0, height: 0 },
+
+        // Auto-save
+        saveTimeout: null,
+        isDirty: false
     };
 
     // ============================================
     // DOM Elements
     // ============================================
     const canvas = document.getElementById('canvas');
-    const canvasContent = document.getElementById('canvas-content');
     const blocksLayer = document.getElementById('blocks-layer');
     const connectionsLayer = document.getElementById('connections-layer');
     const propertiesPanel = document.getElementById('properties-panel');
+    const diagramList = document.getElementById('diagram-list');
+    const diagramNameInput = document.getElementById('diagram-name');
+    const saveStatus = document.getElementById('save-status');
 
     // Toolbar buttons
+    const newDiagramBtn = document.getElementById('new-diagram-btn');
     const addBlockBtn = document.getElementById('add-block-btn');
     const addConnectionBtn = document.getElementById('add-connection-btn');
     const deleteBtn = document.getElementById('delete-btn');
-    const saveBtn = document.getElementById('save-btn');
-    const loadBtn = document.getElementById('load-btn');
-    const clearBtn = document.getElementById('clear-btn');
 
     // Property inputs
     const blockLabel = document.getElementById('block-label');
     const blockColor = document.getElementById('block-color');
     const blockWidth = document.getElementById('block-width');
     const blockHeight = document.getElementById('block-height');
+
+    // ============================================
+    // Diagram Management
+    // ============================================
+    function generateDiagramId() {
+        return 'diagram-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+
+    function createDiagram(name = 'Untitled Diagram') {
+        const diagram = {
+            id: generateDiagramId(),
+            name: name,
+            blocks: [],
+            connections: [],
+            nextBlockId: 1,
+            nextConnectionId: 1,
+            viewBox: { x: 0, y: 0, width: 1200, height: 800 },
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        state.diagrams.push(diagram);
+        switchDiagram(diagram.id);
+        renderDiagramList();
+        scheduleAutoSave();
+        return diagram;
+    }
+
+    function switchDiagram(diagramId) {
+        // Save current diagram state before switching
+        if (state.currentDiagramId) {
+            saveCurrentDiagramState();
+        }
+
+        const diagram = state.diagrams.find(d => d.id === diagramId);
+        if (!diagram) return;
+
+        state.currentDiagramId = diagramId;
+
+        // Load diagram data into state
+        state.blocks = diagram.blocks;
+        state.connections = diagram.connections;
+        state.nextBlockId = diagram.nextBlockId;
+        state.nextConnectionId = diagram.nextConnectionId;
+        state.viewBox = diagram.viewBox;
+
+        // Clear selection
+        state.selectedBlockId = null;
+        state.selectedConnectionId = null;
+        hideProperties();
+
+        // Update UI
+        diagramNameInput.value = diagram.name;
+        updateViewBox();
+        renderCanvas();
+        renderDiagramList();
+    }
+
+    function saveCurrentDiagramState() {
+        const diagram = state.diagrams.find(d => d.id === state.currentDiagramId);
+        if (!diagram) return;
+
+        diagram.blocks = state.blocks;
+        diagram.connections = state.connections;
+        diagram.nextBlockId = state.nextBlockId;
+        diagram.nextConnectionId = state.nextConnectionId;
+        diagram.viewBox = { ...state.viewBox };
+        diagram.updatedAt = Date.now();
+    }
+
+    function deleteDiagram(diagramId) {
+        if (state.diagrams.length <= 1) {
+            alert('Cannot delete the last diagram.');
+            return;
+        }
+
+        if (!confirm('Delete this diagram? This cannot be undone.')) {
+            return;
+        }
+
+        const index = state.diagrams.findIndex(d => d.id === diagramId);
+        if (index === -1) return;
+
+        state.diagrams.splice(index, 1);
+
+        // If deleting current diagram, switch to another
+        if (state.currentDiagramId === diagramId) {
+            const newCurrent = state.diagrams[Math.min(index, state.diagrams.length - 1)];
+            switchDiagram(newCurrent.id);
+        }
+
+        renderDiagramList();
+        scheduleAutoSave();
+    }
+
+    function renameDiagram(diagramId, newName) {
+        const diagram = state.diagrams.find(d => d.id === diagramId);
+        if (!diagram) return;
+
+        diagram.name = newName || 'Untitled Diagram';
+        diagram.updatedAt = Date.now();
+        renderDiagramList();
+        scheduleAutoSave();
+    }
+
+    function renderDiagramList() {
+        diagramList.innerHTML = '';
+
+        state.diagrams.forEach(diagram => {
+            const item = document.createElement('div');
+            item.className = 'diagram-item' + (diagram.id === state.currentDiagramId ? ' active' : '');
+            item.setAttribute('data-diagram-id', diagram.id);
+
+            const name = document.createElement('span');
+            name.className = 'diagram-item-name';
+            name.textContent = diagram.name;
+
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'diagram-item-delete';
+            deleteButton.textContent = '\u00d7';
+            deleteButton.title = 'Delete diagram';
+            deleteButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteDiagram(diagram.id);
+            });
+
+            item.appendChild(name);
+            item.appendChild(deleteButton);
+
+            item.addEventListener('click', () => {
+                if (diagram.id !== state.currentDiagramId) {
+                    switchDiagram(diagram.id);
+                }
+            });
+
+            diagramList.appendChild(item);
+        });
+    }
+
+    function renderCanvas() {
+        blocksLayer.innerHTML = '';
+        connectionsLayer.innerHTML = '';
+
+        state.blocks.forEach(renderBlock);
+        state.connections.forEach(renderConnection);
+    }
+
+    // ============================================
+    // Persistence
+    // ============================================
+    function saveAllDiagrams() {
+        saveCurrentDiagramState();
+
+        const data = {
+            version: 2,
+            diagrams: state.diagrams,
+            currentDiagramId: state.currentDiagramId
+        };
+
+        localStorage.setItem('cbdiag-data', JSON.stringify(data));
+        state.isDirty = false;
+        updateSaveStatus('Saved');
+    }
+
+    function loadAllDiagrams() {
+        // Try new format first
+        const saved = localStorage.getItem('cbdiag-data');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                if (data.version === 2 && data.diagrams) {
+                    state.diagrams = data.diagrams;
+                    const currentId = data.currentDiagramId || (data.diagrams[0] && data.diagrams[0].id);
+                    if (currentId) {
+                        switchDiagram(currentId);
+                    }
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error loading diagrams:', e);
+            }
+        }
+
+        // Try migrating old format
+        const oldSaved = localStorage.getItem('cbdiag-diagram');
+        if (oldSaved) {
+            try {
+                const oldData = JSON.parse(oldSaved);
+                const migrated = {
+                    id: generateDiagramId(),
+                    name: 'Migrated Diagram',
+                    blocks: oldData.blocks || [],
+                    connections: oldData.connections || [],
+                    nextBlockId: oldData.nextBlockId || 1,
+                    nextConnectionId: oldData.nextConnectionId || 1,
+                    viewBox: oldData.viewBox || { x: 0, y: 0, width: 1200, height: 800 },
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+                state.diagrams = [migrated];
+                switchDiagram(migrated.id);
+                // Remove old format
+                localStorage.removeItem('cbdiag-diagram');
+                saveAllDiagrams();
+                return true;
+            } catch (e) {
+                console.error('Error migrating old diagram:', e);
+            }
+        }
+
+        return false;
+    }
+
+    function scheduleAutoSave() {
+        state.isDirty = true;
+        updateSaveStatus('Saving...');
+
+        if (state.saveTimeout) {
+            clearTimeout(state.saveTimeout);
+        }
+
+        state.saveTimeout = setTimeout(() => {
+            saveAllDiagrams();
+        }, 1000);
+    }
+
+    function updateSaveStatus(text) {
+        saveStatus.textContent = text;
+    }
 
     // ============================================
     // Utility Functions
@@ -101,11 +340,11 @@
         state.blocks.push(block);
         renderBlock(block);
         selectBlock(block.id);
+        scheduleAutoSave();
         return block;
     }
 
     function renderBlock(block) {
-        // Remove existing if present
         const existing = document.getElementById(block.id);
         if (existing) existing.remove();
 
@@ -153,7 +392,6 @@
     }
 
     function selectBlock(blockId) {
-        // Deselect previous
         if (state.selectedBlockId) {
             const prev = document.getElementById(state.selectedBlockId);
             if (prev) prev.classList.remove('selected');
@@ -176,7 +414,7 @@
         }
     }
 
-    function updateBlock(blockId, updates) {
+    function updateBlock(blockId, updates, triggerSave = true) {
         const block = state.blocks.find(b => b.id === blockId);
         if (!block) return;
 
@@ -186,12 +424,11 @@
             selectBlock(blockId);
         }
 
-        // Update connections
         updateConnectionsForBlock(blockId);
+        if (triggerSave) scheduleAutoSave();
     }
 
     function deleteBlock(blockId) {
-        // Remove connections involving this block
         state.connections = state.connections.filter(conn => {
             if (conn.fromBlockId === blockId || conn.toBlockId === blockId) {
                 const connEl = document.getElementById(conn.id);
@@ -201,7 +438,6 @@
             return true;
         });
 
-        // Remove block
         state.blocks = state.blocks.filter(b => b.id !== blockId);
         const el = document.getElementById(blockId);
         if (el) el.remove();
@@ -209,13 +445,12 @@
         if (state.selectedBlockId === blockId) {
             selectBlock(null);
         }
+        scheduleAutoSave();
     }
 
     // ============================================
     // Connection Functions
     // ============================================
-
-    // Get the center point of a specific side of a block
     function getAnchorPoint(block, side) {
         const center = getBlockCenter(block);
         switch (side) {
@@ -232,7 +467,6 @@
         }
     }
 
-    // Determine the best side to connect from based on relative positions
     function getBestSides(fromBlock, toBlock) {
         const fromCenter = getBlockCenter(fromBlock);
         const toCenter = getBlockCenter(toBlock);
@@ -242,9 +476,7 @@
 
         let fromSide, toSide;
 
-        // Determine based on which axis has greater distance
         if (Math.abs(dx) >= Math.abs(dy)) {
-            // Horizontal connection (or default for equal/zero)
             if (dx >= 0) {
                 fromSide = 'right';
                 toSide = 'left';
@@ -253,7 +485,6 @@
                 toSide = 'right';
             }
         } else {
-            // Vertical connection
             if (dy > 0) {
                 fromSide = 'bottom';
                 toSide = 'top';
@@ -269,7 +500,6 @@
     function createConnection(fromBlockId, toBlockId) {
         if (fromBlockId === toBlockId) return null;
 
-        // Check if connection already exists
         const exists = state.connections.some(
             c => (c.fromBlockId === fromBlockId && c.toBlockId === toBlockId) ||
                  (c.fromBlockId === toBlockId && c.toBlockId === fromBlockId)
@@ -280,7 +510,6 @@
         const toBlock = state.blocks.find(b => b.id === toBlockId);
         if (!fromBlock || !toBlock) return null;
 
-        // Determine which sides to connect
         const { fromSide, toSide } = getBestSides(fromBlock, toBlock);
 
         const conn = {
@@ -292,6 +521,7 @@
         };
         state.connections.push(conn);
         renderConnection(conn);
+        scheduleAutoSave();
         return conn;
     }
 
@@ -303,7 +533,6 @@
         const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
         if (!fromBlock || !toBlock) return;
 
-        // Use stored sides, or calculate if not present (backwards compatibility)
         let fromSide = conn.fromSide;
         let toSide = conn.toSide;
         if (!fromSide || !toSide) {
@@ -334,10 +563,7 @@
     }
 
     function selectConnection(connId) {
-        // Deselect block
         selectBlock(null);
-
-        // Deselect previous connection
         document.querySelectorAll('.connection.selected').forEach(el => el.classList.remove('selected'));
 
         state.selectedConnectionId = connId;
@@ -356,6 +582,7 @@
         if (state.selectedConnectionId === connId) {
             state.selectedConnectionId = null;
         }
+        scheduleAutoSave();
     }
 
     // ============================================
@@ -371,67 +598,6 @@
 
     function hideProperties() {
         propertiesPanel.classList.add('hidden');
-    }
-
-    // ============================================
-    // Save/Load
-    // ============================================
-    function saveDiagram() {
-        const data = {
-            version: 1,
-            blocks: state.blocks,
-            connections: state.connections,
-            nextBlockId: state.nextBlockId,
-            nextConnectionId: state.nextConnectionId,
-            viewBox: state.viewBox
-        };
-        localStorage.setItem('cbdiag-diagram', JSON.stringify(data));
-        alert('Diagram saved!');
-    }
-
-    function loadDiagram() {
-        const saved = localStorage.getItem('cbdiag-diagram');
-        if (!saved) {
-            alert('No saved diagram found.');
-            return;
-        }
-
-        try {
-            const data = JSON.parse(saved);
-            clearDiagram(false);
-
-            state.blocks = data.blocks || [];
-            state.connections = data.connections || [];
-            state.nextBlockId = data.nextBlockId || 1;
-            state.nextConnectionId = data.nextConnectionId || 1;
-            state.viewBox = data.viewBox || { x: 0, y: 0, width: 1200, height: 800 };
-
-            updateViewBox();
-            state.blocks.forEach(renderBlock);
-            state.connections.forEach(renderConnection);
-
-            alert('Diagram loaded!');
-        } catch (e) {
-            alert('Error loading diagram: ' + e.message);
-        }
-    }
-
-    function clearDiagram(confirm = true) {
-        if (confirm && !window.confirm('Clear the diagram? This cannot be undone.')) {
-            return;
-        }
-
-        blocksLayer.innerHTML = '';
-        connectionsLayer.innerHTML = '';
-
-        state.blocks = [];
-        state.connections = [];
-        state.selectedBlockId = null;
-        state.selectedConnectionId = null;
-        state.nextBlockId = 1;
-        state.nextConnectionId = 1;
-
-        hideProperties();
     }
 
     // ============================================
@@ -463,7 +629,6 @@
             connectionsLayer.appendChild(tempLine);
         }
 
-        // Create a temporary "block" to determine best side
         const tempBlock = { x: toPoint.x, y: toPoint.y, width: 0, height: 0 };
         const { fromSide } = getBestSides(fromBlock, tempBlock);
         const fromEdge = getAnchorPoint(fromBlock, fromSide);
@@ -474,6 +639,18 @@
     // Event Handlers
     // ============================================
     function initEventHandlers() {
+        // New diagram button
+        newDiagramBtn.addEventListener('click', () => {
+            createDiagram();
+        });
+
+        // Diagram name input
+        diagramNameInput.addEventListener('input', (e) => {
+            if (state.currentDiagramId) {
+                renameDiagram(state.currentDiagramId, e.target.value);
+            }
+        });
+
         // Toolbar
         addBlockBtn.addEventListener('click', () => {
             const center = {
@@ -498,10 +675,6 @@
                 deleteConnection(state.selectedConnectionId);
             }
         });
-
-        saveBtn.addEventListener('click', saveDiagram);
-        loadBtn.addEventListener('click', loadDiagram);
-        clearBtn.addEventListener('click', () => clearDiagram(true));
 
         // Properties panel
         blockLabel.addEventListener('input', (e) => {
@@ -536,6 +709,13 @@
 
         // Keyboard
         document.addEventListener('keydown', handleKeyDown);
+
+        // Save before leaving
+        window.addEventListener('beforeunload', () => {
+            if (state.isDirty) {
+                saveAllDiagrams();
+            }
+        });
     }
 
     function handleMouseDown(e) {
@@ -544,7 +724,6 @@
         const blockGroup = target.closest('.block');
         const connPath = target.closest('.connection');
 
-        // Connection mode
         if (state.mode === 'connecting') {
             if (blockGroup) {
                 const blockId = blockGroup.getAttribute('data-block-id');
@@ -558,7 +737,6 @@
             return;
         }
 
-        // Resize handle
         if (target.getAttribute('data-resize') === 'true') {
             const blockId = target.closest('.block').getAttribute('data-block-id');
             const block = state.blocks.find(b => b.id === blockId);
@@ -577,7 +755,6 @@
             return;
         }
 
-        // Block click
         if (blockGroup) {
             const blockId = blockGroup.getAttribute('data-block-id');
             const block = state.blocks.find(b => b.id === blockId);
@@ -595,7 +772,6 @@
             return;
         }
 
-        // Connection click
         if (connPath) {
             const connId = connPath.getAttribute('data-conn-id');
             selectConnection(connId);
@@ -603,7 +779,6 @@
             return;
         }
 
-        // Canvas click - start panning or deselect
         selectBlock(null);
         state.selectedConnectionId = null;
         document.querySelectorAll('.connection.selected').forEach(el => el.classList.remove('selected'));
@@ -616,7 +791,6 @@
     function handleMouseMove(e) {
         const point = screenToSvg(e.clientX, e.clientY);
 
-        // Connection mode - draw temp line
         if (state.mode === 'connecting' && state.connectionStart) {
             const fromBlock = state.blocks.find(b => b.id === state.connectionStart);
             if (fromBlock) {
@@ -624,26 +798,23 @@
             }
         }
 
-        // Resizing
         if (state.isResizing && state.selectedBlockId) {
             const block = state.blocks.find(b => b.id === state.selectedBlockId);
             if (block) {
                 const newWidth = Math.max(50, state.resizeStart.width + (point.x - state.resizeStart.x));
                 const newHeight = Math.max(30, state.resizeStart.height + (point.y - state.resizeStart.y));
-                updateBlock(state.selectedBlockId, { width: newWidth, height: newHeight });
+                updateBlock(state.selectedBlockId, { width: newWidth, height: newHeight }, false);
             }
             return;
         }
 
-        // Dragging block
         if (state.isDragging && state.selectedBlockId) {
             const newX = point.x - state.dragOffset.x;
             const newY = point.y - state.dragOffset.y;
-            updateBlock(state.selectedBlockId, { x: newX, y: newY });
+            updateBlock(state.selectedBlockId, { x: newX, y: newY }, false);
             return;
         }
 
-        // Panning
         if (state.isPanning) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = state.viewBox.width / rect.width;
@@ -661,6 +832,9 @@
     }
 
     function handleMouseUp(e) {
+        if (state.isDragging || state.isResizing) {
+            scheduleAutoSave();
+        }
         state.isDragging = false;
         state.isResizing = false;
         state.isPanning = false;
@@ -676,30 +850,25 @@
 
         const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
 
-        // Calculate mouse position in SVG coordinates before zoom
         const svgX = state.viewBox.x + (mouseX / rect.width) * state.viewBox.width;
         const svgY = state.viewBox.y + (mouseY / rect.height) * state.viewBox.height;
 
-        // Apply zoom
         const newWidth = state.viewBox.width * zoomFactor;
         const newHeight = state.viewBox.height * zoomFactor;
 
-        // Clamp zoom
         if (newWidth < 200 || newWidth > 5000) return;
 
-        // Adjust viewBox to zoom toward mouse position
         state.viewBox.width = newWidth;
         state.viewBox.height = newHeight;
         state.viewBox.x = svgX - (mouseX / rect.width) * newWidth;
         state.viewBox.y = svgY - (mouseY / rect.height) * newHeight;
 
         updateViewBox();
+        scheduleAutoSave();
     }
 
     function handleKeyDown(e) {
-        // Delete key
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            // Don't delete if typing in input
             if (e.target.tagName === 'INPUT') return;
 
             if (state.selectedBlockId) {
@@ -709,7 +878,6 @@
             }
         }
 
-        // Escape to exit connection mode
         if (e.key === 'Escape') {
             if (state.mode === 'connecting') {
                 exitConnectionMode();
@@ -723,11 +891,15 @@
     // Initialize
     // ============================================
     function init() {
-        updateViewBox();
         initEventHandlers();
 
-        // Create a sample block to start
-        createBlock(600, 400);
+        // Load existing diagrams or create first one
+        const loaded = loadAllDiagrams();
+        if (!loaded || state.diagrams.length === 0) {
+            createDiagram('My First Diagram');
+        }
+
+        renderDiagramList();
     }
 
     init();

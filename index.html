@@ -8,22 +8,32 @@
 </head>
 <body>
     <div id="app">
-        <header class="toolbar">
-            <div class="toolbar-left">
+        <aside class="sidebar">
+            <div class="sidebar-header">
                 <span class="logo">cbdiag</span>
-                <button id="add-block-btn" class="tool-btn" title="Add Block">+ Block</button>
-                <button id="add-connection-btn" class="tool-btn" title="Add Connection">+ Connection</button>
-                <span class="separator"></span>
-                <button id="delete-btn" class="tool-btn" title="Delete Selected">Delete</button>
+                <button id="new-diagram-btn" class="icon-btn" title="New Diagram">+</button>
             </div>
-            <div class="toolbar-right">
-                <button id="save-btn" class="tool-btn">Save</button>
-                <button id="load-btn" class="tool-btn">Load</button>
-                <button id="clear-btn" class="tool-btn">Clear</button>
+            <div class="diagram-list" id="diagram-list">
+                <!-- Diagram items will be rendered here -->
             </div>
-        </header>
+        </aside>
 
-        <main class="canvas-container">
+        <div class="editor">
+            <header class="toolbar">
+                <div class="toolbar-left">
+                    <input type="text" id="diagram-name" class="diagram-name-input" placeholder="Untitled Diagram">
+                    <span class="separator"></span>
+                    <button id="add-block-btn" class="tool-btn" title="Add Block">+ Block</button>
+                    <button id="add-connection-btn" class="tool-btn" title="Add Connection">+ Connection</button>
+                    <span class="separator"></span>
+                    <button id="delete-btn" class="tool-btn" title="Delete Selected">Delete</button>
+                </div>
+                <div class="toolbar-right">
+                    <span id="save-status" class="save-status">Saved</span>
+                </div>
+            </header>
+
+            <main class="canvas-container">
             <svg id="canvas" class="canvas">
                 <defs>
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -56,6 +66,7 @@
                 <input type="number" id="block-height" min="30" max="500">
             </label>
         </aside>
+        </div>
     </div>
 
     <script src="js/app.js"></script>
