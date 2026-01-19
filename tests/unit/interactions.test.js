@@ -52,12 +52,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientY: 100
             });
 
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the block element itself so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.isDragging).toBe(true);
@@ -77,12 +73,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientY: 130
             });
 
-            Object.defineProperty(mouseEvent, 'target', {
-                value: resizeHandle,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the resize handle so it bubbles to canvas
+            resizeHandle.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.isResizing).toBe(true);
@@ -103,12 +95,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientY: 100
             });
 
-            Object.defineProperty(mouseEvent, 'target', {
-                value: connElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            connElement.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.selectedConnectionId).toBe(conn.id);
@@ -120,11 +108,6 @@ describe('Mouse Interaction Handlers', () => {
                 bubbles: true,
                 clientX: 500,
                 clientY: 500
-            });
-
-            Object.defineProperty(mouseEvent, 'target', {
-                value: canvas,
-                writable: false
             });
 
             canvas.dispatchEvent(mouseEvent);
@@ -147,12 +130,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientY: 100
             });
 
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.connectionStart).toBe(block.id);
@@ -171,11 +150,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: block1Element,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            block1Element.dispatchEvent(mouseEvent);
 
             // Complete connection to block2
             const block2Element = document.querySelector(`[data-block-id="${block2.id}"]`);
@@ -184,11 +160,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 300,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: block2Element,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            block2Element.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.connections.length).toBe(1);
@@ -209,11 +182,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             // Move mouse
             mouseEvent = new MouseEvent('mousemove', {
@@ -242,11 +212,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: block.x + block.width,
                 clientY: block.y + block.height
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: resizeHandle,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            resizeHandle.dispatchEvent(mouseEvent);
 
             // Try to resize smaller than minimum (should be constrained to 50)
             mouseEvent = new MouseEvent('mousemove', {
@@ -274,11 +241,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: block.x + block.width,
                 clientY: block.y + block.height
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: resizeHandle,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            resizeHandle.dispatchEvent(mouseEvent);
 
             // Try to resize smaller than minimum (should be constrained to 30)
             mouseEvent = new MouseEvent('mousemove', {
@@ -295,36 +259,36 @@ describe('Mouse Interaction Handlers', () => {
 
         it('should drag block with offset', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
-            const originalX = block.x;
-            const originalY = block.y;
             window.__cbdiag__.renderCanvas();
 
             const blockElement = document.querySelector(`[data-block-id="${block.id}"]`);
 
-            // Start drag
+            // Start drag at block center
             let mouseEvent = new MouseEvent('mousedown', {
                 bubbles: true,
-                clientX: 100,
-                clientY: 100
+                clientX: block.x + block.width / 2,
+                clientY: block.y + block.height / 2
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            blockElement.dispatchEvent(mouseEvent);
 
-            // Move mouse
+            // Check that dragging state is set
+            let state = window.__cbdiag__.getState();
+            expect(state.isDragging).toBe(true);
+            expect(state.dragOffset).toBeDefined();
+
+            // Move mouse  - dispatch on canvas since mousemove handler is on canvas
             mouseEvent = new MouseEvent('mousemove', {
                 bubbles: true,
-                clientX: 150,
-                clientY: 150
+                clientX: block.x + block.width / 2 + 50,
+                clientY: block.y + block.height / 2 + 50
             });
             canvas.dispatchEvent(mouseEvent);
 
-            const state = window.__cbdiag__.getState();
+            // Check that block position was updated
+            state = window.__cbdiag__.getState();
             const updatedBlock = state.blocks.find(b => b.id === block.id);
-            expect(updatedBlock.x).not.toBe(originalX);
-            expect(updatedBlock.y).not.toBe(originalY);
+            expect(updatedBlock.x).toBeGreaterThan(block.x);
+            expect(updatedBlock.y).toBeGreaterThan(block.y);
         });
 
         it('should pan canvas when panning', () => {
@@ -338,10 +302,7 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 500,
                 clientY: 500
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: canvas,
-                writable: false
-            });
+            // Dispatch on the element so it bubbles to canvas
             canvas.dispatchEvent(mouseEvent);
 
             // Move mouse
@@ -371,11 +332,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             let state = window.__cbdiag__.getState();
             expect(state.isDragging).toBe(true);
@@ -403,11 +361,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: block.x + block.width,
                 clientY: block.y + block.height
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: resizeHandle,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            resizeHandle.dispatchEvent(mouseEvent);
 
             let state = window.__cbdiag__.getState();
             expect(state.isResizing).toBe(true);
@@ -434,11 +389,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             // Mouse up
             mouseEvent = new MouseEvent('mouseup', {
@@ -474,12 +426,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: proxyElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            proxyElement.dispatchEvent(mouseEvent);
 
             const updatedState = window.__cbdiag__.getState();
             expect(updatedState.currentDiagramId).toBe(diagram2Id);
@@ -502,12 +450,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: proxyElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            proxyElement.dispatchEvent(mouseEvent);
 
             expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Linked diagram not found'));
             alertSpy.mockRestore();
@@ -524,12 +468,8 @@ describe('Mouse Interaction Handlers', () => {
                 clientX: 100,
                 clientY: 100
             });
-            Object.defineProperty(mouseEvent, 'target', {
-                value: blockElement,
-                writable: false
-            });
-
-            canvas.dispatchEvent(mouseEvent);
+            // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.currentDiagramId).toBe(originalDiagramId);
@@ -675,12 +615,9 @@ describe('Mouse Interaction Handlers', () => {
                 key: 'Delete',
                 bubbles: true
             });
-            Object.defineProperty(keyEvent, 'target', {
-                value: input,
-                writable: false
-            });
 
-            document.dispatchEvent(keyEvent);
+            // Dispatch on input so it bubbles to document
+            input.dispatchEvent(keyEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.blocks.find(b => b.id === block.id)).toBeDefined();
@@ -759,11 +696,8 @@ describe('Mouse Interaction Handlers', () => {
                     clientX: 100,
                     clientY: 100
                 });
-                Object.defineProperty(mouseEvent, 'target', {
-                    value: blockElement,
-                    writable: false
-                });
-                canvas.dispatchEvent(mouseEvent);
+                // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
                 // Move mouse to create temp line
                 const moveEvent = new MouseEvent('mousemove', {
@@ -802,11 +736,8 @@ describe('Mouse Interaction Handlers', () => {
                     clientX: 100,
                     clientY: 100
                 });
-                Object.defineProperty(mouseEvent, 'target', {
-                    value: blockElement,
-                    writable: false
-                });
-                canvas.dispatchEvent(mouseEvent);
+                // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
                 const moveEvent = new MouseEvent('mousemove', {
                     bubbles: true,
@@ -832,11 +763,8 @@ describe('Mouse Interaction Handlers', () => {
                     clientX: 100,
                     clientY: 100
                 });
-                Object.defineProperty(mouseEvent, 'target', {
-                    value: blockElement,
-                    writable: false
-                });
-                canvas.dispatchEvent(mouseEvent);
+                // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
                 // First move
                 let moveEvent = new MouseEvent('mousemove', {
@@ -873,11 +801,8 @@ describe('Mouse Interaction Handlers', () => {
                     clientX: 100,
                     clientY: 100
                 });
-                Object.defineProperty(mouseEvent, 'target', {
-                    value: blockElement,
-                    writable: false
-                });
-                canvas.dispatchEvent(mouseEvent);
+                // Dispatch on the element so it bubbles to canvas
+            blockElement.dispatchEvent(mouseEvent);
 
                 const moveEvent = new MouseEvent('mousemove', {
                     bubbles: true,
