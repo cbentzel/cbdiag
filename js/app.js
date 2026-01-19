@@ -72,6 +72,9 @@
     const blockColor = document.getElementById('block-color');
     const blockWidth = document.getElementById('block-width');
     const blockHeight = document.getElementById('block-height');
+    const blockZIndex = document.getElementById('block-zindex');
+    const bringToFrontBtn = document.getElementById('bring-to-front');
+    const sendToBackBtn = document.getElementById('send-to-back');
     const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
 
     // Modal elements
@@ -319,7 +322,15 @@
         blocksLayer.innerHTML = '';
         connectionsLayer.innerHTML = '';
 
-        state.blocks.forEach(renderBlock);
+        // Sort blocks by zIndex before rendering (lower values first)
+        const sortedBlocks = [...state.blocks].sort((a, b) => {
+            const aZ = a.zIndex || 0;
+            const bZ = b.zIndex || 0;
+            // Use stable sort: if zIndex is equal, preserve array order
+            return aZ - bZ || state.blocks.indexOf(a) - state.blocks.indexOf(b);
+        });
+
+        sortedBlocks.forEach(renderBlock);
         state.connections.forEach(renderConnection);
     }
 
@@ -434,6 +445,31 @@
         canvas.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
     }
 
+    // Z-ordering utility functions
+    function getMaxZIndex() {
+        return state.blocks.reduce((max, block) => {
+            const z = block.zIndex || 0;
+            return Math.max(max, z);
+        }, 0);
+    }
+
+    function getMinZIndex() {
+        return state.blocks.reduce((min, block) => {
+            const z = block.zIndex || 0;
+            return Math.min(min, z);
+        }, 0);
+    }
+
+    function bringToFront(blockId) {
+        const maxZ = getMaxZIndex();
+        updateBlock(blockId, { zIndex: maxZ + 1 });
+    }
+
+    function sendToBack(blockId) {
+        const minZ = getMinZIndex();
+        updateBlock(blockId, { zIndex: minZ - 1 });
+    }
+
     // ============================================
     // Block Functions
     // ============================================
@@ -446,7 +482,8 @@
             width: 120,
             height: 60,
             label: 'Block',
-            color: '#4a90d9'
+            color: '#4a90d9',
+            zIndex: getMaxZIndex() + 1
         };
         state.blocks.push(block);
         renderBlock(block);
@@ -468,7 +505,8 @@
             height: 70,
             label: linkedDiagram.name,
             color: '#8e44ad',
-            linkedDiagramId: linkedDiagramId
+            linkedDiagramId: linkedDiagramId,
+            zIndex: getMaxZIndex() + 1
         };
         state.blocks.push(block);
         renderBlock(block);
@@ -544,7 +582,29 @@
         resizeHandle.setAttribute('data-resize', 'true');
 
         g.appendChild(resizeHandle);
-        blocksLayer.appendChild(g);
+
+        // Insert block at correct position based on z-index
+        const currentZ = block.zIndex || 0;
+        const existingBlocks = Array.from(blocksLayer.children);
+        let insertBefore = null;
+
+        for (const existingG of existingBlocks) {
+            const existingBlockId = existingG.getAttribute('data-block-id');
+            const existingBlock = state.blocks.find(b => b.id === existingBlockId);
+            if (existingBlock) {
+                const existingZ = existingBlock.zIndex || 0;
+                if (existingZ > currentZ) {
+                    insertBefore = existingG;
+                    break;
+                }
+            }
+        }
+
+        if (insertBefore) {
+            blocksLayer.insertBefore(g, insertBefore);
+        } else {
+            blocksLayer.appendChild(g);
+        }
     }
 
     function darkenColor(hex, percent) {
@@ -771,6 +831,7 @@
 
         blockWidth.value = block.width;
         blockHeight.value = block.height;
+        blockZIndex.value = block.zIndex || 0;
         propertiesPanel.classList.remove('hidden');
     }
 
@@ -954,6 +1015,24 @@
         blockHeight.addEventListener('change', (e) => {
             if (state.selectedBlockId) {
                 updateBlock(state.selectedBlockId, { height: parseInt(e.target.value) || 60 });
+            }
+        });
+
+        blockZIndex.addEventListener('change', (e) => {
+            if (state.selectedBlockId) {
+                updateBlock(state.selectedBlockId, { zIndex: parseInt(e.target.value) || 0 });
+            }
+        });
+
+        bringToFrontBtn.addEventListener('click', () => {
+            if (state.selectedBlockId) {
+                bringToFront(state.selectedBlockId);
+            }
+        });
+
+        sendToBackBtn.addEventListener('click', () => {
+            if (state.selectedBlockId) {
+                sendToBack(state.selectedBlockId);
             }
         });
 

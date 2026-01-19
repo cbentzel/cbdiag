@@ -465,3 +465,38 @@ body {
 #proxy-properties.hidden {
     display: none;
 }
+
+/* Z-Order Controls */
+.z-order-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.z-order-controls input[type="number"] {
+    flex: 1;
+    margin-top: 0;
+}
+
+.z-order-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.z-btn {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.2s;
+}
+
+.z-btn:hover {
+    background: #e8e8e8;
+}
+
+.z-btn:active {
+    background: #d8d8d8;
+}
