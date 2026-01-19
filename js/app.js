@@ -516,6 +516,9 @@
     }
 
     function renderBlock(block) {
+        // In test mode, blocksLayer might be null if not initialized
+        if (!blocksLayer) return;
+
         const existing = document.getElementById(block.id);
         if (existing) existing.remove();
 
@@ -1275,5 +1278,84 @@
         }
     }
 
-    init();
+    // Don't auto-init in test mode
+    if (typeof window === 'undefined' || !window.__TEST_MODE__) {
+        init();
+    }
+
+    // ============================================
+    // Test Mode Exports
+    // ============================================
+    // Expose internal functions for testing
+    if (typeof window !== 'undefined' && window.__TEST_MODE__) {
+        window.__cbdiag__ = {
+            // Core operations
+            createBlock,
+            updateBlock,
+            deleteBlock,
+            selectBlock,
+            renderBlock,
+            createConnection,
+            renderConnection,
+            deleteConnection,
+            updateConnectionsForBlock,
+            createDiagram,
+            switchDiagram,
+            deleteDiagram,
+            renameDiagram,
+            createProxyBlock,
+            navigateIntoDiagram,
+            navigateBack,
+
+            // Utilities
+            screenToSvg,
+            getBlockCenter,
+            getAnchorPoint,
+            getBestSides,
+            darkenColor,
+            generateId,
+            getMaxZIndex,
+            getMinZIndex,
+            bringToFront,
+            sendToBack,
+
+            // Persistence
+            saveAllDiagrams,
+            loadAllDiagrams,
+            scheduleAutoSave,
+
+            // Initialization
+            init,
+            initEventHandlers,
+
+            // State management (use carefully in tests)
+            getState: () => ({
+                diagrams: [...state.diagrams],
+                currentDiagramId: state.currentDiagramId,
+                blocks: [...state.blocks],
+                connections: [...state.connections],
+                selectedBlockId: state.selectedBlockId,
+                selectedConnectionId: state.selectedConnectionId,
+                navigationStack: [...state.navigationStack]
+            }),
+            resetState: () => {
+                state.diagrams = [];
+                state.currentDiagramId = null;
+                state.blocks = [];
+                state.connections = [];
+                state.nextBlockId = 1;
+                state.nextConnectionId = 1;
+                state.navigationStack = [];
+                state.selectedBlockId = null;
+                state.selectedConnectionId = null;
+                state.mode = 'select';
+                state.connectionStart = null;
+                // Safely clear DOM (elements might be null in tests)
+                if (blocksLayer) blocksLayer.innerHTML = '';
+                if (connectionsLayer) connectionsLayer.innerHTML = '';
+                if (diagramList) diagramList.innerHTML = '';
+                if (propertiesPanel) hideProperties();
+            }
+        };
+    }
 })();
