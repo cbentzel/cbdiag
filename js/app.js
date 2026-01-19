@@ -86,11 +86,19 @@
     // ============================================
     // Diagram Management
     // ============================================
+    let nextDiagramId = 1;
+
     function generateDiagramId() {
-        return 'diagram-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        return `diagram-${nextDiagramId++}`;
     }
 
-    function createDiagram(name = 'Untitled Diagram') {
+    function createDiagram(name) {
+        // Auto-generate name if not provided
+        if (!name) {
+            const count = state.diagrams.length + 1;
+            name = `Diagram ${count}`;
+        }
+
         const diagram = {
             id: generateDiagramId(),
             name: name,
@@ -144,7 +152,9 @@
         hideProperties();
 
         // Update UI
-        diagramNameInput.value = diagram.name;
+        if (diagramNameInput) {
+            diagramNameInput.value = diagram.name;
+        }
         updateViewBox();
         renderCanvas();
         renderDiagramList();
@@ -189,8 +199,14 @@
         }
     }
 
-    function navigateIntoDiagram(diagramId, fromProxyBlockId) {
-        switchDiagram(diagramId, true, fromProxyBlockId);
+    function navigateIntoDiagram(proxyBlockId) {
+        const proxy = state.blocks.find(b => b.id === proxyBlockId);
+        if (!proxy || proxy.type !== 'proxy') return;
+
+        const targetDiagramId = proxy.linkedDiagramId || proxy.targetDiagramId;
+        if (targetDiagramId) {
+            switchDiagram(targetDiagramId, true, proxyBlockId);
+        }
     }
 
     function saveCurrentDiagramState() {
@@ -207,11 +223,13 @@
 
     function deleteDiagram(diagramId) {
         if (state.diagrams.length <= 1) {
-            alert('Cannot delete the last diagram.');
+            if (typeof alert === 'function') {
+                alert('Cannot delete the last diagram.');
+            }
             return;
         }
 
-        if (!confirm('Delete this diagram? This cannot be undone.')) {
+        if (typeof confirm === 'function' && !confirm('Delete this diagram? This cannot be undone.')) {
             return;
         }
 
@@ -252,6 +270,8 @@
     }
 
     function renderDiagramList() {
+        if (!diagramList) return;
+
         diagramList.innerHTML = '';
 
         state.diagrams.forEach(diagram => {
@@ -288,6 +308,8 @@
     }
 
     function renderBreadcrumb() {
+        if (!breadcrumb) return;
+
         breadcrumb.innerHTML = '';
 
         if (state.navigationStack.length === 0) {
@@ -319,6 +341,8 @@
     }
 
     function renderCanvas() {
+        if (!blocksLayer || !connectionsLayer) return;
+
         blocksLayer.innerHTML = '';
         connectionsLayer.innerHTML = '';
 
@@ -346,13 +370,13 @@
             currentDiagramId: state.currentDiagramId
         };
 
-        localStorage.setItem('cbdiag-data', JSON.stringify(data));
+        localStorage.setItem('cbdiag_diagrams', JSON.stringify(data));
         state.isDirty = false;
         updateSaveStatus('Saved');
     }
 
     function loadAllDiagrams() {
-        const saved = localStorage.getItem('cbdiag-data');
+        const saved = localStorage.getItem('cbdiag_diagrams');
         if (saved) {
             try {
                 const data = JSON.parse(saved);
@@ -362,6 +386,25 @@
                     if (currentId) {
                         switchDiagram(currentId);
                     }
+                    return true;
+                } else if (data.version === 1 && data.diagrams) {
+                    // Migrate v1 to v2: add zIndex to blocks that don't have it
+                    data.diagrams.forEach(diagram => {
+                        if (diagram.blocks) {
+                            diagram.blocks.forEach((block, index) => {
+                                if (block.zIndex === undefined) {
+                                    block.zIndex = index;
+                                }
+                            });
+                        }
+                    });
+                    state.diagrams = data.diagrams;
+                    const currentId = data.currentDiagramId || (data.diagrams[0] && data.diagrams[0].id);
+                    if (currentId) {
+                        switchDiagram(currentId);
+                    }
+                    // Save as v2
+                    saveAllDiagrams();
                     return true;
                 }
             } catch (e) {
@@ -411,7 +454,9 @@
     }
 
     function updateSaveStatus(text) {
-        saveStatus.textContent = text;
+        if (saveStatus) {
+            saveStatus.textContent = text;
+        }
     }
 
     // ============================================
@@ -423,13 +468,15 @@
         return `${prefix}-${Date.now()}`;
     }
 
-    function screenToSvg(screenX, screenY) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = state.viewBox.width / rect.width;
-        const scaleY = state.viewBox.height / rect.height;
+    function screenToSvg(screenX, screenY, canvasEl = canvas) {
+        if (!canvasEl) return { x: screenX, y: screenY };
+        const rect = canvasEl.getBoundingClientRect();
+        const viewBox = canvasEl.viewBox ? canvasEl.viewBox.baseVal : state.viewBox;
+        const scaleX = viewBox.width / rect.width;
+        const scaleY = viewBox.height / rect.height;
         return {
-            x: state.viewBox.x + (screenX - rect.left) * scaleX,
-            y: state.viewBox.y + (screenY - rect.top) * scaleY
+            x: viewBox.x + (screenX - rect.left) * scaleX,
+            y: viewBox.y + (screenY - rect.top) * scaleY
         };
     }
 
@@ -441,23 +488,26 @@
     }
 
     function updateViewBox() {
+        if (!canvas) return;
         const { x, y, width, height } = state.viewBox;
         canvas.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
     }
 
     // Z-ordering utility functions
     function getMaxZIndex() {
+        if (state.blocks.length === 0) return 0;
         return state.blocks.reduce((max, block) => {
             const z = block.zIndex || 0;
             return Math.max(max, z);
-        }, 0);
+        }, -Infinity);
     }
 
     function getMinZIndex() {
+        if (state.blocks.length === 0) return 0;
         return state.blocks.reduce((min, block) => {
             const z = block.zIndex || 0;
             return Math.min(min, z);
-        }, 0);
+        }, Infinity);
     }
 
     function bringToFront(blockId) {
@@ -504,8 +554,9 @@
             width: 140,
             height: 70,
             label: linkedDiagram.name,
-            color: '#8e44ad',
+            color: '#9b59b6',
             linkedDiagramId: linkedDiagramId,
+            targetDiagramId: linkedDiagramId, // Alias for compatibility
             zIndex: getMaxZIndex() + 1
         };
         state.blocks.push(block);
@@ -702,27 +753,27 @@
         const dx = toCenter.x - fromCenter.x;
         const dy = toCenter.y - fromCenter.y;
 
-        let fromSide, toSide;
+        let sideA, sideB;
 
         if (Math.abs(dx) >= Math.abs(dy)) {
             if (dx >= 0) {
-                fromSide = 'right';
-                toSide = 'left';
+                sideA = 'right';
+                sideB = 'left';
             } else {
-                fromSide = 'left';
-                toSide = 'right';
+                sideA = 'left';
+                sideB = 'right';
             }
         } else {
             if (dy > 0) {
-                fromSide = 'bottom';
-                toSide = 'top';
+                sideA = 'bottom';
+                sideB = 'top';
             } else {
-                fromSide = 'top';
-                toSide = 'bottom';
+                sideA = 'top';
+                sideB = 'bottom';
             }
         }
 
-        return { fromSide, toSide };
+        return { sideA, sideB };
     }
 
     function createConnection(fromBlockId, toBlockId) {
@@ -738,12 +789,14 @@
         const toBlock = state.blocks.find(b => b.id === toBlockId);
         if (!fromBlock || !toBlock) return null;
 
-        const { fromSide, toSide } = getBestSides(fromBlock, toBlock);
+        const { sideA: fromSide, sideB: toSide } = getBestSides(fromBlock, toBlock);
 
         const conn = {
             id: generateId('conn'),
             fromBlockId,
             toBlockId,
+            from: fromBlockId, // Alias for compatibility
+            to: toBlockId, // Alias for compatibility
             fromSide,
             toSide
         };
@@ -765,8 +818,8 @@
         let toSide = conn.toSide;
         if (!fromSide || !toSide) {
             const sides = getBestSides(fromBlock, toBlock);
-            fromSide = sides.fromSide;
-            toSide = sides.toSide;
+            fromSide = sides.sideA;
+            toSide = sides.sideB;
         }
 
         const fromPoint = getAnchorPoint(fromBlock, fromSide);
@@ -779,7 +832,9 @@
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
 
-        connectionsLayer.appendChild(path);
+        if (connectionsLayer) {
+            connectionsLayer.appendChild(path);
+        }
     }
 
     function updateConnectionsForBlock(blockId) {
@@ -817,29 +872,35 @@
     // Properties Panel
     // ============================================
     function showProperties(block) {
+        if (!propertiesPanel) return;
+
         const isProxy = block.type === 'proxy';
 
-        propertiesTitle.textContent = isProxy ? 'Proxy Properties' : 'Block Properties';
-
-        if (isProxy) {
-            blockPropertiesDiv.classList.add('hidden');
-            proxyPropertiesDiv.classList.remove('hidden');
-            populateProxyDiagramSelect(proxyDiagramSelect, block.linkedDiagramId);
-        } else {
-            blockPropertiesDiv.classList.remove('hidden');
-            proxyPropertiesDiv.classList.add('hidden');
-            blockLabel.value = block.label;
-            blockColor.value = block.color;
+        if (propertiesTitle) {
+            propertiesTitle.textContent = isProxy ? 'Proxy Properties' : 'Block Properties';
         }
 
-        blockWidth.value = block.width;
-        blockHeight.value = block.height;
-        blockZIndex.value = block.zIndex || 0;
+        if (isProxy) {
+            if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
+            if (proxyPropertiesDiv) proxyPropertiesDiv.classList.remove('hidden');
+            if (proxyDiagramSelect) populateProxyDiagramSelect(proxyDiagramSelect, block.linkedDiagramId);
+        } else {
+            if (blockPropertiesDiv) blockPropertiesDiv.classList.remove('hidden');
+            if (proxyPropertiesDiv) proxyPropertiesDiv.classList.add('hidden');
+            if (blockLabel) blockLabel.value = block.label;
+            if (blockColor) blockColor.value = block.color;
+        }
+
+        if (blockWidth) blockWidth.value = block.width;
+        if (blockHeight) blockHeight.value = block.height;
+        if (blockZIndex) blockZIndex.value = block.zIndex || 0;
         propertiesPanel.classList.remove('hidden');
     }
 
     function hideProperties() {
-        propertiesPanel.classList.add('hidden');
+        if (propertiesPanel) {
+            propertiesPanel.classList.add('hidden');
+        }
     }
 
     function populateProxyDiagramSelect(selectEl, selectedId = null) {
@@ -902,7 +963,7 @@
         }
 
         const tempBlock = { x: toPoint.x, y: toPoint.y, width: 0, height: 0 };
-        const { fromSide } = getBestSides(fromBlock, tempBlock);
+        const { sideA: fromSide } = getBestSides(fromBlock, tempBlock);
         const fromEdge = getAnchorPoint(fromBlock, fromSide);
         tempLine.setAttribute('d', `M ${fromEdge.x} ${fromEdge.y} L ${toPoint.x} ${toPoint.y}`);
     }
@@ -911,140 +972,177 @@
     // Event Handlers
     // ============================================
     function initEventHandlers() {
+        // Exit early if DOM elements don't exist
+        if (!newDiagramBtn) return;
+
         // New diagram button
-        newDiagramBtn.addEventListener('click', () => {
-            createDiagram();
-        });
+        if (newDiagramBtn) {
+            newDiagramBtn.addEventListener('click', () => {
+                createDiagram();
+            });
+        }
 
         // Diagram name input
-        diagramNameInput.addEventListener('input', (e) => {
-            if (state.currentDiagramId) {
-                renameDiagram(state.currentDiagramId, e.target.value);
-            }
-        });
+        if (diagramNameInput) {
+            diagramNameInput.addEventListener('input', (e) => {
+                if (state.currentDiagramId) {
+                    renameDiagram(state.currentDiagramId, e.target.value);
+                }
+            });
+        }
 
         // Toolbar
-        addBlockBtn.addEventListener('click', () => {
-            const center = {
-                x: state.viewBox.x + state.viewBox.width / 2,
-                y: state.viewBox.y + state.viewBox.height / 2
-            };
-            createBlock(center.x, center.y);
-        });
+        if (addBlockBtn) {
+            addBlockBtn.addEventListener('click', () => {
+                const center = {
+                    x: state.viewBox.x + state.viewBox.width / 2,
+                    y: state.viewBox.y + state.viewBox.height / 2
+                };
+                createBlock(center.x, center.y);
+            });
+        }
 
-        addProxyBtn.addEventListener('click', () => {
-            if (state.diagrams.length < 2) {
-                alert('Create at least one other diagram first to link to.');
-                return;
-            }
-            showProxyModal();
-        });
+        if (addProxyBtn) {
+            addProxyBtn.addEventListener('click', () => {
+                if (state.diagrams.length < 2) {
+                    alert('Create at least one other diagram first to link to.');
+                    return;
+                }
+                showProxyModal();
+            });
+        }
 
-        addConnectionBtn.addEventListener('click', () => {
-            if (state.mode === 'connecting') {
-                exitConnectionMode();
-            } else {
-                enterConnectionMode();
-            }
-        });
+        if (addConnectionBtn) {
+            addConnectionBtn.addEventListener('click', () => {
+                if (state.mode === 'connecting') {
+                    exitConnectionMode();
+                } else {
+                    enterConnectionMode();
+                }
+            });
+        }
 
-        deleteBtn.addEventListener('click', () => {
-            if (state.selectedBlockId) {
-                deleteBlock(state.selectedBlockId);
-            } else if (state.selectedConnectionId) {
-                deleteConnection(state.selectedConnectionId);
-            }
-        });
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                if (state.selectedBlockId) {
+                    deleteBlock(state.selectedBlockId);
+                } else if (state.selectedConnectionId) {
+                    deleteConnection(state.selectedConnectionId);
+                }
+            });
+        }
 
         // Proxy modal
-        proxyModalCancel.addEventListener('click', hideProxyModal);
-        proxyModalCreate.addEventListener('click', () => {
-            const selectedDiagramId = proxyModalSelect.value;
-            if (!selectedDiagramId) {
-                alert('Please select a diagram.');
-                return;
-            }
-            const center = {
-                x: state.viewBox.x + state.viewBox.width / 2,
-                y: state.viewBox.y + state.viewBox.height / 2
-            };
-            createProxyBlock(center.x, center.y, selectedDiagramId);
-            hideProxyModal();
-        });
+        if (proxyModalCancel) proxyModalCancel.addEventListener('click', hideProxyModal);
+        if (proxyModalCreate) {
+            proxyModalCreate.addEventListener('click', () => {
+                const selectedDiagramId = proxyModalSelect.value;
+                if (!selectedDiagramId) {
+                    alert('Please select a diagram.');
+                    return;
+                }
+                const center = {
+                    x: state.viewBox.x + state.viewBox.width / 2,
+                    y: state.viewBox.y + state.viewBox.height / 2
+                };
+                createProxyBlock(center.x, center.y, selectedDiagramId);
+                hideProxyModal();
+            });
+        }
 
         // Close modal on backdrop click
-        proxyModal.addEventListener('click', (e) => {
-            if (e.target === proxyModal) {
-                hideProxyModal();
-            }
-        });
+        if (proxyModal) {
+            proxyModal.addEventListener('click', (e) => {
+                if (e.target === proxyModal) {
+                    hideProxyModal();
+                }
+            });
+        }
 
         // Properties panel - block properties
-        blockLabel.addEventListener('input', (e) => {
-            if (state.selectedBlockId) {
-                const block = state.blocks.find(b => b.id === state.selectedBlockId);
-                if (block && block.type !== 'proxy') {
-                    updateBlock(state.selectedBlockId, { label: e.target.value });
+        if (blockLabel) {
+            blockLabel.addEventListener('input', (e) => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block && block.type !== 'proxy') {
+                        updateBlock(state.selectedBlockId, { label: e.target.value });
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        blockColor.addEventListener('input', (e) => {
-            if (state.selectedBlockId) {
-                const block = state.blocks.find(b => b.id === state.selectedBlockId);
-                if (block && block.type !== 'proxy') {
-                    updateBlock(state.selectedBlockId, { color: e.target.value });
+        if (blockColor) {
+            blockColor.addEventListener('input', (e) => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block && block.type !== 'proxy') {
+                        updateBlock(state.selectedBlockId, { color: e.target.value });
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // Properties panel - proxy properties
-        proxyDiagramSelect.addEventListener('change', (e) => {
-            if (state.selectedBlockId) {
-                const block = state.blocks.find(b => b.id === state.selectedBlockId);
-                if (block && block.type === 'proxy' && e.target.value) {
-                    updateBlock(state.selectedBlockId, { linkedDiagramId: e.target.value });
+        if (proxyDiagramSelect) {
+            proxyDiagramSelect.addEventListener('change', (e) => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block && block.type === 'proxy' && e.target.value) {
+                        updateBlock(state.selectedBlockId, { linkedDiagramId: e.target.value });
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // Properties panel - common properties
-        blockWidth.addEventListener('change', (e) => {
-            if (state.selectedBlockId) {
-                updateBlock(state.selectedBlockId, { width: parseInt(e.target.value) || 120 });
-            }
-        });
+        if (blockWidth) {
+            blockWidth.addEventListener('change', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { width: parseInt(e.target.value) || 120 });
+                }
+            });
+        }
 
-        blockHeight.addEventListener('change', (e) => {
-            if (state.selectedBlockId) {
-                updateBlock(state.selectedBlockId, { height: parseInt(e.target.value) || 60 });
-            }
-        });
+        if (blockHeight) {
+            blockHeight.addEventListener('change', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { height: parseInt(e.target.value) || 60 });
+                }
+            });
+        }
 
-        blockZIndex.addEventListener('change', (e) => {
-            if (state.selectedBlockId) {
-                updateBlock(state.selectedBlockId, { zIndex: parseInt(e.target.value) || 0 });
-            }
-        });
+        if (blockZIndex) {
+            blockZIndex.addEventListener('change', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { zIndex: parseInt(e.target.value) || 0 });
+                }
+            });
+        }
 
-        bringToFrontBtn.addEventListener('click', () => {
-            if (state.selectedBlockId) {
-                bringToFront(state.selectedBlockId);
-            }
-        });
+        if (bringToFrontBtn) {
+            bringToFrontBtn.addEventListener('click', () => {
+                if (state.selectedBlockId) {
+                    bringToFront(state.selectedBlockId);
+                }
+            });
+        }
 
-        sendToBackBtn.addEventListener('click', () => {
-            if (state.selectedBlockId) {
-                sendToBack(state.selectedBlockId);
-            }
-        });
+        if (sendToBackBtn) {
+            sendToBackBtn.addEventListener('click', () => {
+                if (state.selectedBlockId) {
+                    sendToBack(state.selectedBlockId);
+                }
+            });
+        }
 
         // Canvas mouse events
-        canvas.addEventListener('mousedown', handleMouseDown);
-        canvas.addEventListener('mousemove', handleMouseMove);
-        canvas.addEventListener('mouseup', handleMouseUp);
-        canvas.addEventListener('dblclick', handleDoubleClick);
-        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        if (canvas) {
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('dblclick', handleDoubleClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+        }
 
         // Keyboard
         document.addEventListener('keydown', handleKeyDown);
@@ -1350,6 +1448,7 @@
                 state.selectedConnectionId = null;
                 state.mode = 'select';
                 state.connectionStart = null;
+                nextDiagramId = 1; // Reset diagram ID counter
                 // Safely clear DOM (elements might be null in tests)
                 if (blocksLayer) blocksLayer.innerHTML = '';
                 if (connectionsLayer) connectionsLayer.innerHTML = '';
