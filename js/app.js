@@ -270,9 +270,11 @@
     }
 
     function renderDiagramList() {
-        if (!diagramList) return;
+        // Get diagramList dynamically to support test environment where DOM is recreated
+        const currentDiagramList = diagramList || document.getElementById('diagram-list');
+        if (!currentDiagramList) return;
 
-        diagramList.innerHTML = '';
+        currentDiagramList.innerHTML = '';
 
         state.diagrams.forEach(diagram => {
             const item = document.createElement('div');
@@ -303,21 +305,23 @@
                 }
             });
 
-            diagramList.appendChild(item);
+            currentDiagramList.appendChild(item);
         });
     }
 
     function renderBreadcrumb() {
-        if (!breadcrumb) return;
+        // Get breadcrumb dynamically to support test environment where DOM is recreated
+        const currentBreadcrumb = breadcrumb || document.getElementById('breadcrumb');
+        if (!currentBreadcrumb) return;
 
-        breadcrumb.innerHTML = '';
+        currentBreadcrumb.innerHTML = '';
 
         if (state.navigationStack.length === 0) {
-            breadcrumb.classList.add('hidden');
+            currentBreadcrumb.classList.add('hidden');
             return;
         }
 
-        breadcrumb.classList.remove('hidden');
+        currentBreadcrumb.classList.remove('hidden');
 
         // Add each item in the navigation stack
         state.navigationStack.forEach((nav, index) => {
@@ -325,26 +329,29 @@
             item.className = 'breadcrumb-item';
             item.textContent = getDiagramName(nav.diagramId);
             item.addEventListener('click', () => navigateBack(index));
-            breadcrumb.appendChild(item);
+            currentBreadcrumb.appendChild(item);
 
             const sep = document.createElement('span');
             sep.className = 'breadcrumb-separator';
             sep.textContent = '>';
-            breadcrumb.appendChild(sep);
+            currentBreadcrumb.appendChild(sep);
         });
 
         // Add current diagram
         const current = document.createElement('span');
         current.className = 'breadcrumb-item current';
         current.textContent = getDiagramName(state.currentDiagramId);
-        breadcrumb.appendChild(current);
+        currentBreadcrumb.appendChild(current);
     }
 
     function renderCanvas() {
-        if (!blocksLayer || !connectionsLayer) return;
+        // Get layers dynamically to support test environment where DOM is recreated
+        const currentBlocksLayer = blocksLayer || document.getElementById('blocks-layer');
+        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
+        if (!currentBlocksLayer || !currentConnectionsLayer) return;
 
-        blocksLayer.innerHTML = '';
-        connectionsLayer.innerHTML = '';
+        currentBlocksLayer.innerHTML = '';
+        currentConnectionsLayer.innerHTML = '';
 
         // Sort blocks by zIndex before rendering (lower values first)
         const sortedBlocks = [...state.blocks].sort((a, b) => {
@@ -567,8 +574,9 @@
     }
 
     function renderBlock(block) {
-        // In test mode, blocksLayer might be null if not initialized
-        if (!blocksLayer) return;
+        // Get blocksLayer dynamically to support test environment where DOM is recreated
+        const currentBlocksLayer = blocksLayer || document.getElementById('blocks-layer');
+        if (!currentBlocksLayer) return;
 
         const existing = document.getElementById(block.id);
         if (existing) existing.remove();
@@ -639,7 +647,7 @@
 
         // Insert block at correct position based on z-index
         const currentZ = block.zIndex || 0;
-        const existingBlocks = Array.from(blocksLayer.children);
+        const existingBlocks = Array.from(currentBlocksLayer.children);
         let insertBefore = null;
 
         for (const existingG of existingBlocks) {
@@ -655,9 +663,9 @@
         }
 
         if (insertBefore) {
-            blocksLayer.insertBefore(g, insertBefore);
+            currentBlocksLayer.insertBefore(g, insertBefore);
         } else {
-            blocksLayer.appendChild(g);
+            currentBlocksLayer.appendChild(g);
         }
     }
 
@@ -832,8 +840,10 @@
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
 
-        if (connectionsLayer) {
-            connectionsLayer.appendChild(path);
+        // Get connectionsLayer dynamically to support test environment where DOM is recreated
+        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
+        if (currentConnectionsLayer) {
+            currentConnectionsLayer.appendChild(path);
         }
     }
 
@@ -956,10 +966,14 @@
     }
 
     function updateTempLine(fromBlock, toPoint) {
+        // Get connectionsLayer dynamically to support test environment where DOM is recreated
+        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
+        if (!currentConnectionsLayer) return;
+
         if (!tempLine) {
             tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             tempLine.setAttribute('class', 'connection-temp');
-            connectionsLayer.appendChild(tempLine);
+            currentConnectionsLayer.appendChild(tempLine);
         }
 
         const tempBlock = { x: toPoint.x, y: toPoint.y, width: 0, height: 0 };
@@ -1393,6 +1407,8 @@
             renderBlock,
             renderConnection,
             renderCanvas,
+            renderDiagramList,
+            renderBreadcrumb,
             createConnection,
             deleteConnection,
             updateConnectionsForBlock,
