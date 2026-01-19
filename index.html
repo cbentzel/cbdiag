@@ -24,6 +24,7 @@
                     <input type="text" id="diagram-name" class="diagram-name-input" placeholder="Untitled Diagram">
                     <span class="separator"></span>
                     <button id="add-block-btn" class="tool-btn" title="Add Block">+ Block</button>
+                    <button id="add-proxy-btn" class="tool-btn" title="Add Proxy Block">+ Proxy</button>
                     <button id="add-connection-btn" class="tool-btn" title="Add Connection">+ Connection</button>
                     <span class="separator"></span>
                     <button id="delete-btn" class="tool-btn" title="Delete Selected">Delete</button>
@@ -32,6 +33,10 @@
                     <span id="save-status" class="save-status">Saved</span>
                 </div>
             </header>
+
+            <nav id="breadcrumb" class="breadcrumb hidden">
+                <!-- Breadcrumb items will be rendered here -->
+            </nav>
 
             <main class="canvas-container">
             <svg id="canvas" class="canvas">
@@ -48,24 +53,49 @@
         </main>
 
         <aside id="properties-panel" class="properties-panel hidden">
-            <h3>Block Properties</h3>
-            <label>
-                Label:
-                <input type="text" id="block-label" placeholder="Enter label">
-            </label>
-            <label>
-                Color:
-                <input type="color" id="block-color" value="#4a90d9">
-            </label>
-            <label>
-                Width:
-                <input type="number" id="block-width" min="50" max="500">
-            </label>
-            <label>
-                Height:
-                <input type="number" id="block-height" min="30" max="500">
-            </label>
+            <h3 id="properties-title">Block Properties</h3>
+            <div id="block-properties">
+                <label>
+                    Label:
+                    <input type="text" id="block-label" placeholder="Enter label">
+                </label>
+                <label>
+                    Color:
+                    <input type="color" id="block-color" value="#4a90d9">
+                </label>
+            </div>
+            <div id="proxy-properties" class="hidden">
+                <label>
+                    Linked Diagram:
+                    <select id="proxy-diagram-select">
+                        <option value="">Select a diagram...</option>
+                    </select>
+                </label>
+            </div>
+            <div id="common-properties">
+                <label>
+                    Width:
+                    <input type="number" id="block-width" min="50" max="500">
+                </label>
+                <label>
+                    Height:
+                    <input type="number" id="block-height" min="30" max="500">
+                </label>
+            </div>
         </aside>
+
+        <div id="proxy-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Select Diagram for Proxy</h3>
+                <select id="proxy-modal-select">
+                    <option value="">Select a diagram...</option>
+                </select>
+                <div class="modal-buttons">
+                    <button id="proxy-modal-cancel" class="tool-btn">Cancel</button>
+                    <button id="proxy-modal-create" class="tool-btn primary">Create Proxy</button>
+                </div>
+            </div>
+        </div>
         </div>
     </div>
 

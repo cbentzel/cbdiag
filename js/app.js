@@ -19,6 +19,9 @@
         nextConnectionId: 1,
         viewBox: { x: 0, y: 0, width: 1200, height: 800 },
 
+        // Navigation history for proxy drill-down
+        navigationStack: [], // Array of { diagramId, fromProxyBlockId }
+
         // UI state
         selectedBlockId: null,
         selectedConnectionId: null,
@@ -49,13 +52,18 @@
     const blocksLayer = document.getElementById('blocks-layer');
     const connectionsLayer = document.getElementById('connections-layer');
     const propertiesPanel = document.getElementById('properties-panel');
+    const propertiesTitle = document.getElementById('properties-title');
+    const blockPropertiesDiv = document.getElementById('block-properties');
+    const proxyPropertiesDiv = document.getElementById('proxy-properties');
     const diagramList = document.getElementById('diagram-list');
     const diagramNameInput = document.getElementById('diagram-name');
     const saveStatus = document.getElementById('save-status');
+    const breadcrumb = document.getElementById('breadcrumb');
 
     // Toolbar buttons
     const newDiagramBtn = document.getElementById('new-diagram-btn');
     const addBlockBtn = document.getElementById('add-block-btn');
+    const addProxyBtn = document.getElementById('add-proxy-btn');
     const addConnectionBtn = document.getElementById('add-connection-btn');
     const deleteBtn = document.getElementById('delete-btn');
 
@@ -64,6 +72,13 @@
     const blockColor = document.getElementById('block-color');
     const blockWidth = document.getElementById('block-width');
     const blockHeight = document.getElementById('block-height');
+    const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
+
+    // Modal elements
+    const proxyModal = document.getElementById('proxy-modal');
+    const proxyModalSelect = document.getElementById('proxy-modal-select');
+    const proxyModalCancel = document.getElementById('proxy-modal-cancel');
+    const proxyModalCreate = document.getElementById('proxy-modal-create');
 
     // ============================================
     // Diagram Management
@@ -85,13 +100,16 @@
             updatedAt: Date.now()
         };
         state.diagrams.push(diagram);
+        // Clear navigation when creating/switching to new diagram from sidebar
+        state.navigationStack = [];
         switchDiagram(diagram.id);
         renderDiagramList();
+        renderBreadcrumb();
         scheduleAutoSave();
         return diagram;
     }
 
-    function switchDiagram(diagramId) {
+    function switchDiagram(diagramId, addToHistory = false, fromProxyBlockId = null) {
         // Save current diagram state before switching
         if (state.currentDiagramId) {
             saveCurrentDiagramState();
@@ -99,6 +117,14 @@
 
         const diagram = state.diagrams.find(d => d.id === diagramId);
         if (!diagram) return;
+
+        // Add to navigation stack if drilling into a proxy
+        if (addToHistory && state.currentDiagramId) {
+            state.navigationStack.push({
+                diagramId: state.currentDiagramId,
+                fromProxyBlockId: fromProxyBlockId
+            });
+        }
 
         state.currentDiagramId = diagramId;
 
@@ -119,6 +145,28 @@
         updateViewBox();
         renderCanvas();
         renderDiagramList();
+        renderBreadcrumb();
+    }
+
+    function navigateBack(toIndex) {
+        if (state.navigationStack.length === 0) return;
+
+        saveCurrentDiagramState();
+
+        // If toIndex is provided, go back to that point
+        if (typeof toIndex === 'number') {
+            const target = state.navigationStack[toIndex];
+            state.navigationStack = state.navigationStack.slice(0, toIndex);
+            switchDiagram(target.diagramId);
+        } else {
+            // Go back one level
+            const prev = state.navigationStack.pop();
+            switchDiagram(prev.diagramId);
+        }
+    }
+
+    function navigateIntoDiagram(diagramId, fromProxyBlockId) {
+        switchDiagram(diagramId, true, fromProxyBlockId);
     }
 
     function saveCurrentDiagramState() {
@@ -148,13 +196,18 @@
 
         state.diagrams.splice(index, 1);
 
+        // Clear navigation stack entries pointing to deleted diagram
+        state.navigationStack = state.navigationStack.filter(n => n.diagramId !== diagramId);
+
         // If deleting current diagram, switch to another
         if (state.currentDiagramId === diagramId) {
+            state.navigationStack = [];
             const newCurrent = state.diagrams[Math.min(index, state.diagrams.length - 1)];
             switchDiagram(newCurrent.id);
         }
 
         renderDiagramList();
+        renderBreadcrumb();
         scheduleAutoSave();
     }
 
@@ -165,7 +218,13 @@
         diagram.name = newName || 'Untitled Diagram';
         diagram.updatedAt = Date.now();
         renderDiagramList();
+        renderBreadcrumb();
         scheduleAutoSave();
+    }
+
+    function getDiagramName(diagramId) {
+        const diagram = state.diagrams.find(d => d.id === diagramId);
+        return diagram ? diagram.name : 'Unknown';
     }
 
     function renderDiagramList() {
@@ -194,12 +253,45 @@
 
             item.addEventListener('click', () => {
                 if (diagram.id !== state.currentDiagramId) {
+                    // Clear navigation stack when switching via sidebar
+                    state.navigationStack = [];
                     switchDiagram(diagram.id);
                 }
             });
 
             diagramList.appendChild(item);
         });
+    }
+
+    function renderBreadcrumb() {
+        breadcrumb.innerHTML = '';
+
+        if (state.navigationStack.length === 0) {
+            breadcrumb.classList.add('hidden');
+            return;
+        }
+
+        breadcrumb.classList.remove('hidden');
+
+        // Add each item in the navigation stack
+        state.navigationStack.forEach((nav, index) => {
+            const item = document.createElement('span');
+            item.className = 'breadcrumb-item';
+            item.textContent = getDiagramName(nav.diagramId);
+            item.addEventListener('click', () => navigateBack(index));
+            breadcrumb.appendChild(item);
+
+            const sep = document.createElement('span');
+            sep.className = 'breadcrumb-separator';
+            sep.textContent = '>';
+            breadcrumb.appendChild(sep);
+        });
+
+        // Add current diagram
+        const current = document.createElement('span');
+        current.className = 'breadcrumb-item current';
+        current.textContent = getDiagramName(state.currentDiagramId);
+        breadcrumb.appendChild(current);
     }
 
     function renderCanvas() {
@@ -228,7 +320,6 @@
     }
 
     function loadAllDiagrams() {
-        // Try new format first
         const saved = localStorage.getItem('cbdiag-data');
         if (saved) {
             try {
@@ -246,7 +337,6 @@
             }
         }
 
-        // Try migrating old format
         const oldSaved = localStorage.getItem('cbdiag-diagram');
         if (oldSaved) {
             try {
@@ -264,7 +354,6 @@
                 };
                 state.diagrams = [migrated];
                 switchDiagram(migrated.id);
-                // Remove old format
                 localStorage.removeItem('cbdiag-diagram');
                 saveAllDiagrams();
                 return true;
@@ -330,6 +419,7 @@
     function createBlock(x, y) {
         const block = {
             id: generateId('block'),
+            type: 'block',
             x: x - 60,
             y: y - 30,
             width: 120,
@@ -344,29 +434,85 @@
         return block;
     }
 
+    function createProxyBlock(x, y, linkedDiagramId) {
+        const linkedDiagram = state.diagrams.find(d => d.id === linkedDiagramId);
+        if (!linkedDiagram) return null;
+
+        const block = {
+            id: generateId('block'),
+            type: 'proxy',
+            x: x - 70,
+            y: y - 35,
+            width: 140,
+            height: 70,
+            label: linkedDiagram.name,
+            color: '#8e44ad',
+            linkedDiagramId: linkedDiagramId
+        };
+        state.blocks.push(block);
+        renderBlock(block);
+        selectBlock(block.id);
+        scheduleAutoSave();
+        return block;
+    }
+
     function renderBlock(block) {
         const existing = document.getElementById(block.id);
         if (existing) existing.remove();
 
+        const isProxy = block.type === 'proxy';
+
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('id', block.id);
-        g.setAttribute('class', 'block');
+        g.setAttribute('class', 'block' + (isProxy ? ' proxy' : ''));
         g.setAttribute('data-block-id', block.id);
+        if (isProxy) {
+            g.setAttribute('data-proxy', 'true');
+            g.setAttribute('data-linked-diagram', block.linkedDiagramId);
+        }
 
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('x', block.x);
         rect.setAttribute('y', block.y);
         rect.setAttribute('width', block.width);
         rect.setAttribute('height', block.height);
-        rect.setAttribute('rx', 4);
+        rect.setAttribute('rx', isProxy ? 8 : 4);
         rect.setAttribute('fill', block.color);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
 
+        // For proxy blocks, update label from linked diagram name
+        let labelText = block.label;
+        if (isProxy && block.linkedDiagramId) {
+            const linkedDiagram = state.diagrams.find(d => d.id === block.linkedDiagramId);
+            if (linkedDiagram) {
+                labelText = linkedDiagram.name;
+                block.label = labelText;
+            } else {
+                labelText = '(Missing)';
+            }
+        }
+
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', block.x + block.width / 2);
-        text.setAttribute('y', block.y + block.height / 2 + 5);
+        text.setAttribute('y', block.y + block.height / 2 + (isProxy ? 0 : 5));
         text.setAttribute('text-anchor', 'middle');
-        text.textContent = block.label;
+        text.textContent = labelText;
+
+        g.appendChild(rect);
+        g.appendChild(text);
+
+        // Add proxy indicator icon
+        if (isProxy) {
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            icon.setAttribute('class', 'proxy-icon');
+            icon.setAttribute('x', block.x + block.width / 2);
+            icon.setAttribute('y', block.y + block.height / 2 + 18);
+            icon.setAttribute('text-anchor', 'middle');
+            icon.setAttribute('font-size', '10');
+            icon.setAttribute('fill', 'rgba(255,255,255,0.7)');
+            icon.textContent = '[ click to enter ]';
+            g.appendChild(icon);
+        }
 
         const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         resizeHandle.setAttribute('class', 'resize-handle');
@@ -376,8 +522,6 @@
         resizeHandle.setAttribute('height', 10);
         resizeHandle.setAttribute('data-resize', 'true');
 
-        g.appendChild(rect);
-        g.appendChild(text);
         g.appendChild(resizeHandle);
         blocksLayer.appendChild(g);
     }
@@ -589,8 +733,21 @@
     // Properties Panel
     // ============================================
     function showProperties(block) {
-        blockLabel.value = block.label;
-        blockColor.value = block.color;
+        const isProxy = block.type === 'proxy';
+
+        propertiesTitle.textContent = isProxy ? 'Proxy Properties' : 'Block Properties';
+
+        if (isProxy) {
+            blockPropertiesDiv.classList.add('hidden');
+            proxyPropertiesDiv.classList.remove('hidden');
+            populateProxyDiagramSelect(proxyDiagramSelect, block.linkedDiagramId);
+        } else {
+            blockPropertiesDiv.classList.remove('hidden');
+            proxyPropertiesDiv.classList.add('hidden');
+            blockLabel.value = block.label;
+            blockColor.value = block.color;
+        }
+
         blockWidth.value = block.width;
         blockHeight.value = block.height;
         propertiesPanel.classList.remove('hidden');
@@ -598,6 +755,36 @@
 
     function hideProperties() {
         propertiesPanel.classList.add('hidden');
+    }
+
+    function populateProxyDiagramSelect(selectEl, selectedId = null) {
+        selectEl.innerHTML = '<option value="">Select a diagram...</option>';
+
+        state.diagrams.forEach(diagram => {
+            // Don't allow linking to current diagram
+            if (diagram.id === state.currentDiagramId) return;
+
+            const option = document.createElement('option');
+            option.value = diagram.id;
+            option.textContent = diagram.name;
+            if (diagram.id === selectedId) {
+                option.selected = true;
+            }
+            selectEl.appendChild(option);
+        });
+    }
+
+    // ============================================
+    // Proxy Modal
+    // ============================================
+    function showProxyModal() {
+        populateProxyDiagramSelect(proxyModalSelect);
+        proxyModal.classList.remove('hidden');
+    }
+
+    function hideProxyModal() {
+        proxyModal.classList.add('hidden');
+        proxyModalSelect.value = '';
     }
 
     // ============================================
@@ -660,6 +847,14 @@
             createBlock(center.x, center.y);
         });
 
+        addProxyBtn.addEventListener('click', () => {
+            if (state.diagrams.length < 2) {
+                alert('Create at least one other diagram first to link to.');
+                return;
+            }
+            showProxyModal();
+        });
+
         addConnectionBtn.addEventListener('click', () => {
             if (state.mode === 'connecting') {
                 exitConnectionMode();
@@ -676,19 +871,59 @@
             }
         });
 
-        // Properties panel
+        // Proxy modal
+        proxyModalCancel.addEventListener('click', hideProxyModal);
+        proxyModalCreate.addEventListener('click', () => {
+            const selectedDiagramId = proxyModalSelect.value;
+            if (!selectedDiagramId) {
+                alert('Please select a diagram.');
+                return;
+            }
+            const center = {
+                x: state.viewBox.x + state.viewBox.width / 2,
+                y: state.viewBox.y + state.viewBox.height / 2
+            };
+            createProxyBlock(center.x, center.y, selectedDiagramId);
+            hideProxyModal();
+        });
+
+        // Close modal on backdrop click
+        proxyModal.addEventListener('click', (e) => {
+            if (e.target === proxyModal) {
+                hideProxyModal();
+            }
+        });
+
+        // Properties panel - block properties
         blockLabel.addEventListener('input', (e) => {
             if (state.selectedBlockId) {
-                updateBlock(state.selectedBlockId, { label: e.target.value });
+                const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                if (block && block.type !== 'proxy') {
+                    updateBlock(state.selectedBlockId, { label: e.target.value });
+                }
             }
         });
 
         blockColor.addEventListener('input', (e) => {
             if (state.selectedBlockId) {
-                updateBlock(state.selectedBlockId, { color: e.target.value });
+                const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                if (block && block.type !== 'proxy') {
+                    updateBlock(state.selectedBlockId, { color: e.target.value });
+                }
             }
         });
 
+        // Properties panel - proxy properties
+        proxyDiagramSelect.addEventListener('change', (e) => {
+            if (state.selectedBlockId) {
+                const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                if (block && block.type === 'proxy' && e.target.value) {
+                    updateBlock(state.selectedBlockId, { linkedDiagramId: e.target.value });
+                }
+            }
+        });
+
+        // Properties panel - common properties
         blockWidth.addEventListener('change', (e) => {
             if (state.selectedBlockId) {
                 updateBlock(state.selectedBlockId, { width: parseInt(e.target.value) || 120 });
@@ -705,6 +940,7 @@
         canvas.addEventListener('mousedown', handleMouseDown);
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('dblclick', handleDoubleClick);
         canvas.addEventListener('wheel', handleWheel, { passive: false });
 
         // Keyboard
@@ -841,6 +1077,24 @@
         canvas.classList.remove('panning');
     }
 
+    function handleDoubleClick(e) {
+        const target = e.target;
+        const blockGroup = target.closest('.block');
+
+        if (blockGroup && blockGroup.getAttribute('data-proxy') === 'true') {
+            const linkedDiagramId = blockGroup.getAttribute('data-linked-diagram');
+            const blockId = blockGroup.getAttribute('data-block-id');
+            if (linkedDiagramId) {
+                const diagram = state.diagrams.find(d => d.id === linkedDiagramId);
+                if (diagram) {
+                    navigateIntoDiagram(linkedDiagramId, blockId);
+                } else {
+                    alert('Linked diagram not found. It may have been deleted.');
+                }
+            }
+        }
+    }
+
     function handleWheel(e) {
         e.preventDefault();
 
@@ -869,7 +1123,7 @@
 
     function handleKeyDown(e) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
             if (state.selectedBlockId) {
                 deleteBlock(state.selectedBlockId);
@@ -879,7 +1133,9 @@
         }
 
         if (e.key === 'Escape') {
-            if (state.mode === 'connecting') {
+            if (proxyModal && !proxyModal.classList.contains('hidden')) {
+                hideProxyModal();
+            } else if (state.mode === 'connecting') {
                 exitConnectionMode();
             } else {
                 selectBlock(null);
@@ -893,13 +1149,13 @@
     function init() {
         initEventHandlers();
 
-        // Load existing diagrams or create first one
         const loaded = loadAllDiagrams();
         if (!loaded || state.diagrams.length === 0) {
             createDiagram('My First Diagram');
         }
 
         renderDiagramList();
+        renderBreadcrumb();
     }
 
     init();
