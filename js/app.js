@@ -109,7 +109,7 @@
         return diagram;
     }
 
-    function switchDiagram(diagramId, addToHistory = false, fromProxyBlockId = null) {
+    function switchDiagram(diagramId, addToHistory = false, fromProxyBlockId = null, skipBrowserHistory = false) {
         // Save current diagram state before switching
         if (state.currentDiagramId) {
             saveCurrentDiagramState();
@@ -146,6 +146,19 @@
         renderCanvas();
         renderDiagramList();
         renderBreadcrumb();
+
+        // Update browser history if not skipping
+        if (!skipBrowserHistory) {
+            const historyState = {
+                diagramId: diagramId,
+                navigationStack: [...state.navigationStack]
+            };
+            if (addToHistory) {
+                history.pushState(historyState, '', `#diagram-${diagramId}`);
+            } else {
+                history.replaceState(historyState, '', `#diagram-${diagramId}`);
+            }
+        }
     }
 
     function navigateBack(toIndex) {
@@ -158,10 +171,18 @@
             const target = state.navigationStack[toIndex];
             state.navigationStack = state.navigationStack.slice(0, toIndex);
             switchDiagram(target.diagramId);
+            // Select the proxy block that was clicked to enter the diagram
+            if (target.fromProxyBlockId) {
+                selectBlock(target.fromProxyBlockId);
+            }
         } else {
             // Go back one level
             const prev = state.navigationStack.pop();
             switchDiagram(prev.diagramId);
+            // Select the proxy block that was clicked to enter the diagram
+            if (prev.fromProxyBlockId) {
+                selectBlock(prev.fromProxyBlockId);
+            }
         }
     }
 
@@ -952,6 +973,15 @@
                 saveAllDiagrams();
             }
         });
+
+        // Browser back/forward button support
+        window.addEventListener('popstate', (e) => {
+            if (e.state) {
+                const { diagramId, navigationStack } = e.state;
+                state.navigationStack = navigationStack || [];
+                switchDiagram(diagramId, false, null, true);
+            }
+        });
     }
 
     function handleMouseDown(e) {
@@ -1156,6 +1186,14 @@
 
         renderDiagramList();
         renderBreadcrumb();
+
+        // Set initial browser history state
+        if (state.currentDiagramId) {
+            history.replaceState({
+                diagramId: state.currentDiagramId,
+                navigationStack: [...state.navigationStack]
+            }, '', `#diagram-${state.currentDiagramId}`);
+        }
     }
 
     init();
