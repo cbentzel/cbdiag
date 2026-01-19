@@ -940,14 +940,14 @@
 
     function enterConnectionMode() {
         state.mode = 'connecting';
-        addConnectionBtn.classList.add('active');
-        canvas.classList.add('connecting');
+        if (addConnectionBtn) addConnectionBtn.classList.add('active');
+        if (canvas) canvas.classList.add('connecting');
     }
 
     function exitConnectionMode() {
         state.mode = 'select';
-        addConnectionBtn.classList.remove('active');
-        canvas.classList.remove('connecting');
+        if (addConnectionBtn) addConnectionBtn.classList.remove('active');
+        if (canvas) canvas.classList.remove('connecting');
         state.connectionStart = null;
         if (tempLine) {
             tempLine.remove();
@@ -972,9 +972,6 @@
     // Event Handlers
     // ============================================
     function initEventHandlers() {
-        // Exit early if DOM elements don't exist
-        if (!newDiagramBtn) return;
-
         // New diagram button
         if (newDiagramBtn) {
             newDiagramBtn.addEventListener('click', () => {
@@ -1392,9 +1389,11 @@
             updateBlock,
             deleteBlock,
             selectBlock,
+            selectConnection,
             renderBlock,
-            createConnection,
             renderConnection,
+            renderCanvas,
+            createConnection,
             deleteConnection,
             updateConnectionsForBlock,
             createDiagram,
@@ -1404,6 +1403,11 @@
             createProxyBlock,
             navigateIntoDiagram,
             navigateBack,
+
+            // Connection mode
+            enterConnectionMode,
+            exitConnectionMode,
+            updateTempLine,
 
             // Utilities
             screenToSvg,
@@ -1434,7 +1438,17 @@
                 connections: [...state.connections],
                 selectedBlockId: state.selectedBlockId,
                 selectedConnectionId: state.selectedConnectionId,
-                navigationStack: [...state.navigationStack]
+                navigationStack: [...state.navigationStack],
+                mode: state.mode,
+                connectionStart: state.connectionStart,
+                isPanning: state.isPanning,
+                panStart: state.panStart,
+                isDragging: state.isDragging,
+                dragOffset: state.dragOffset,
+                isResizing: state.isResizing,
+                resizeStart: state.resizeStart,
+                viewBox: { ...state.viewBox },
+                isDirty: state.isDirty
             }),
             resetState: () => {
                 state.diagrams = [];
