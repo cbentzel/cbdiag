@@ -99,6 +99,28 @@ describe('Block Operations', () => {
             expect(updatedBlock.label).toBe(originalLabel);
             expect(updatedBlock.color).toBe('#00ff00');
         });
+
+        it('should update block without triggering save when triggerSave is false', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+
+            // Update with triggerSave = false
+            window.__cbdiag__.updateBlock(block.id, { x: 200 }, false);
+
+            const state = window.__cbdiag__.getState();
+            const updatedBlock = state.blocks.find(b => b.id === block.id);
+            expect(updatedBlock.x).toBe(200);
+        });
+
+        it('should do nothing when updating non-existent block', () => {
+            const initialState = window.__cbdiag__.getState();
+            const initialBlockCount = initialState.blocks.length;
+
+            // Try to update non-existent block
+            window.__cbdiag__.updateBlock('non-existent-id', { x: 500 });
+
+            const state = window.__cbdiag__.getState();
+            expect(state.blocks.length).toBe(initialBlockCount);
+        });
     });
 
     describe('deleteBlock', () => {
@@ -133,6 +155,30 @@ describe('Block Operations', () => {
             const state = window.__cbdiag__.getState();
             expect(state.selectedBlockId).toBeNull();
         });
+
+        it('should not affect selection when deleting unselected block', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            window.__cbdiag__.selectBlock(block1.id);
+
+            window.__cbdiag__.deleteBlock(block2.id);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedBlockId).toBe(block1.id);
+        });
+
+        it('should delete block even when no DOM element exists', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+            // Remove the DOM element directly
+            const el = document.getElementById(block.id);
+            if (el) el.remove();
+
+            const initialCount = window.__cbdiag__.getState().blocks.length;
+            window.__cbdiag__.deleteBlock(block.id);
+
+            const newCount = window.__cbdiag__.getState().blocks.length;
+            expect(newCount).toBe(initialCount - 1);
+        });
     });
 
     describe('selectBlock', () => {
@@ -143,6 +189,13 @@ describe('Block Operations', () => {
 
             const state = window.__cbdiag__.getState();
             expect(state.selectedBlockId).toBe(block.id);
+        });
+
+        it('should handle selecting non-existent block gracefully', () => {
+            window.__cbdiag__.selectBlock('non-existent-block-id');
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedBlockId).toBe('non-existent-block-id');
         });
 
         it('should allow deselecting by passing null', () => {

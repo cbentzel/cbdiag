@@ -209,7 +209,8 @@ describe('Persistence Operations', () => {
                         color: '#4a90d9'
                         // No zIndex in v1
                     }],
-                    connections: []
+                    connections: [],
+                    viewBox: { x: 0, y: 0, width: 1200, height: 800 }
                 }],
                 currentDiagramId: 'diagram-1'
             };
@@ -225,6 +226,41 @@ describe('Persistence Operations', () => {
             // Should have migrated and added zIndex
             expect(block.zIndex).toBeDefined();
             expect(typeof block.zIndex).toBe('number');
+        });
+
+        it('should migrate old single-diagram format', () => {
+            // Old format used different localStorage key
+            const oldData = {
+                blocks: [{
+                    id: 'old-block-1',
+                    x: 50,
+                    y: 50,
+                    width: 100,
+                    height: 50,
+                    label: 'Old Format Block',
+                    color: '#ff0000'
+                }],
+                connections: [],
+                nextBlockId: 2,
+                nextConnectionId: 1
+            };
+
+            localStorage.setItem('cbdiag-diagram', JSON.stringify(oldData));
+
+            const result = window.__cbdiag__.loadAllDiagrams();
+
+            expect(result).toBe(true);
+            const state = window.__cbdiag__.getState();
+            expect(state.diagrams.length).toBeGreaterThan(0);
+            expect(state.diagrams[0].name).toBe('Migrated Diagram');
+        });
+
+        it('should return false when no saved data exists', () => {
+            localStorage.clear();
+
+            const result = window.__cbdiag__.loadAllDiagrams();
+
+            expect(result).toBe(false);
         });
     });
 

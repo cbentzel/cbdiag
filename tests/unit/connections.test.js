@@ -83,6 +83,28 @@ describe('Connection Operations', () => {
             expect(conn.fromSide).toBe('bottom');
             expect(conn.toSide).toBe('top');
         });
+
+        it('should return null when creating connection with non-existent block', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+
+            const conn = window.__cbdiag__.createConnection(block1.id, 'non-existent-block');
+
+            expect(conn).toBeNull();
+        });
+
+        it('should prevent reverse duplicate connections', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+
+            window.__cbdiag__.createConnection(block1.id, block2.id);
+            const initialCount = window.__cbdiag__.getState().connections.length;
+
+            // Try to create connection in reverse direction
+            window.__cbdiag__.createConnection(block2.id, block1.id);
+
+            const newCount = window.__cbdiag__.getState().connections.length;
+            expect(newCount).toBe(initialCount);
+        });
     });
 
     describe('deleteConnection', () => {
@@ -102,6 +124,59 @@ describe('Connection Operations', () => {
             expect(() => {
                 window.__cbdiag__.deleteConnection('non-existent-id');
             }).not.toThrow();
+        });
+
+        it('should clear selection when deleting selected connection', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+
+            window.__cbdiag__.selectConnection(conn.id);
+            expect(window.__cbdiag__.getState().selectedConnectionId).toBe(conn.id);
+
+            window.__cbdiag__.deleteConnection(conn.id);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedConnectionId).toBeNull();
+        });
+    });
+
+    describe('selectConnection', () => {
+        it('should select a connection', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+
+            window.__cbdiag__.selectConnection(conn.id);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedConnectionId).toBe(conn.id);
+        });
+
+        it('should deselect connection when called with null', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+
+            window.__cbdiag__.selectConnection(conn.id);
+            window.__cbdiag__.selectConnection(null);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedConnectionId).toBeNull();
+        });
+
+        it('should deselect block when selecting connection', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+
+            window.__cbdiag__.selectBlock(block1.id);
+            expect(window.__cbdiag__.getState().selectedBlockId).toBe(block1.id);
+
+            window.__cbdiag__.selectConnection(conn.id);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedBlockId).toBeNull();
         });
     });
 
@@ -137,13 +212,12 @@ describe('Connection Operations', () => {
         it('should delete connections when source block is deleted', () => {
             const block1 = window.__cbdiag__.createBlock(100, 100);
             const block2 = window.__cbdiag__.createBlock(300, 100);
-            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+            window.__cbdiag__.createConnection(block1.id, block2.id);
 
             window.__cbdiag__.deleteBlock(block1.id);
 
             const state = window.__cbdiag__.getState();
-            const hasConnection = state.connections.some(c => c.id === conn.id);
-            expect(hasConnection).toBe(false);
+            expect(state.connections.length).toBe(0);
         });
 
         it('should delete connections when target block is deleted', () => {

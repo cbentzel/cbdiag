@@ -223,6 +223,22 @@ describe('Rendering Functions', () => {
             expect(connElement.getAttribute('marker-end')).toBe('url(#arrowhead)');
         });
 
+        it('should calculate sides when not provided', () => {
+            const block1 = window.__cbdiag__.createBlock(100, 100);
+            const block2 = window.__cbdiag__.createBlock(300, 100);
+            const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
+
+            // Clear the sides to test recalculation
+            delete conn.fromSide;
+            delete conn.toSide;
+            window.__cbdiag__.renderConnection(conn);
+
+            const connElement = document.getElementById(conn.id);
+            // Path should still be rendered correctly
+            expect(connElement).toBeDefined();
+            expect(connElement.getAttribute('d')).toMatch(/^M \d+(\.\d+)? \d+(\.\d+)? L \d+(\.\d+)? \d+(\.\d+)?$/);
+        });
+
         it('should replace existing connection element when re-rendering', () => {
             const block1 = window.__cbdiag__.createBlock(100, 100);
             const block2 = window.__cbdiag__.createBlock(300, 100);

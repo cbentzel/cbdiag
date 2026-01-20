@@ -1308,7 +1308,7 @@
             if (linkedDiagramId) {
                 const diagram = state.diagrams.find(d => d.id === linkedDiagramId);
                 if (diagram) {
-                    navigateIntoDiagram(linkedDiagramId, blockId);
+                    navigateIntoDiagram(blockId);
                 } else {
                     alert('Linked diagram not found. It may have been deleted.');
                 }

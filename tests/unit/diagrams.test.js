@@ -104,6 +104,19 @@ describe('Diagram Operations', () => {
             expect(state.blocks.length).toBe(2);
         });
 
+        it('should do nothing when switching to non-existent diagram', () => {
+            const diagram1 = window.__cbdiag__.createDiagram();
+
+            window.__cbdiag__.init();
+            window.__cbdiag__.switchDiagram(diagram1.id);
+
+            // Try to switch to non-existent diagram
+            window.__cbdiag__.switchDiagram('non-existent-diagram-id');
+
+            const state = window.__cbdiag__.getState();
+            expect(state.currentDiagramId).toBe(diagram1.id);
+        });
+
         it('should clear selection when switching diagrams', () => {
             const diagram1 = window.__cbdiag__.createDiagram();
             const diagram2 = window.__cbdiag__.createDiagram();
@@ -244,6 +257,48 @@ describe('Diagram Operations', () => {
 
             const newId = window.__cbdiag__.getState().currentDiagramId;
             expect(newId).toBe(currentId);
+        });
+
+        it('should navigate back to specific index in navigation stack', () => {
+            const diagram1 = window.__cbdiag__.createDiagram();
+            const diagram2 = window.__cbdiag__.createDiagram();
+            const diagram3 = window.__cbdiag__.createDiagram();
+
+            window.__cbdiag__.init();
+            window.__cbdiag__.switchDiagram(diagram1.id);
+
+            // Create proxy to diagram2
+            const proxy1 = window.__cbdiag__.createProxyBlock(100, 100, diagram2.id);
+            window.__cbdiag__.navigateIntoDiagram(proxy1.id);
+
+            // Create proxy to diagram3
+            const proxy2 = window.__cbdiag__.createProxyBlock(100, 100, diagram3.id);
+            window.__cbdiag__.navigateIntoDiagram(proxy2.id);
+
+            // Now we're in diagram3 with stack [diagram1->proxy1, diagram2->proxy2]
+            expect(window.__cbdiag__.getState().navigationStack.length).toBe(2);
+
+            // Navigate back to index 0 (should go to diagram1)
+            window.__cbdiag__.navigateBack(0);
+
+            const state = window.__cbdiag__.getState();
+            expect(state.currentDiagramId).toBe(diagram1.id);
+            expect(state.navigationStack.length).toBe(0);
+        });
+
+        it('should select proxy block after navigating back', () => {
+            const diagram1 = window.__cbdiag__.createDiagram();
+            const diagram2 = window.__cbdiag__.createDiagram();
+
+            window.__cbdiag__.init();
+            window.__cbdiag__.switchDiagram(diagram1.id);
+
+            const proxy = window.__cbdiag__.createProxyBlock(100, 100, diagram2.id);
+            window.__cbdiag__.navigateIntoDiagram(proxy.id);
+            window.__cbdiag__.navigateBack();
+
+            const state = window.__cbdiag__.getState();
+            expect(state.selectedBlockId).toBe(proxy.id);
         });
     });
 });
