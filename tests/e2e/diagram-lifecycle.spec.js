@@ -75,9 +75,8 @@ test.describe('Diagram Lifecycle and Persistence', () => {
         // Create second diagram
         await page.click('#new-diagram-btn');
 
-        // Verify canvas is empty in new diagram
-        let blockCount = await page.locator('.block').count();
-        expect(blockCount).toBe(0);
+        // Wait for diagram switch to complete and canvas to be cleared
+        await expect(page.locator('.block')).toHaveCount(0);
 
         // Create block in second diagram
         await page.click('#add-block-btn');

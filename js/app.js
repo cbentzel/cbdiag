@@ -389,6 +389,13 @@
                 const data = JSON.parse(saved);
                 if (data.version === 2 && data.diagrams) {
                     state.diagrams = data.diagrams;
+                    // Update nextDiagramId to be higher than any existing diagram ID
+                    data.diagrams.forEach(d => {
+                        const match = d.id.match(/diagram-(\d+)/);
+                        if (match) {
+                            nextDiagramId = Math.max(nextDiagramId, parseInt(match[1], 10) + 1);
+                        }
+                    });
                     const currentId = data.currentDiagramId || (data.diagrams[0] && data.diagrams[0].id);
                     if (currentId) {
                         switchDiagram(currentId);
@@ -406,6 +413,13 @@
                         }
                     });
                     state.diagrams = data.diagrams;
+                    // Update nextDiagramId to be higher than any existing diagram ID
+                    data.diagrams.forEach(d => {
+                        const match = d.id.match(/diagram-(\d+)/);
+                        if (match) {
+                            nextDiagramId = Math.max(nextDiagramId, parseInt(match[1], 10) + 1);
+                        }
+                    });
                     const currentId = data.currentDiagramId || (data.diagrams[0] && data.diagrams[0].id);
                     if (currentId) {
                         switchDiagram(currentId);
