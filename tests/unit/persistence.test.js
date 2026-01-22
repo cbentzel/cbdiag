@@ -262,6 +262,105 @@ describe('Persistence Operations', () => {
 
             expect(result).toBe(false);
         });
+
+        it('should restore nextDiagramId from v2 data', () => {
+            // Create v2 format data with diagram IDs
+            const v2Data = {
+                version: 2,
+                diagrams: [
+                    {
+                        id: 'diagram-5',
+                        name: 'Test 1',
+                        blocks: [],
+                        connections: [],
+                        nextBlockId: 1,
+                        nextConnectionId: 1,
+                        viewBox: { x: 0, y: 0, width: 1200, height: 800 }
+                    },
+                    {
+                        id: 'diagram-10',
+                        name: 'Test 2',
+                        blocks: [],
+                        connections: [],
+                        nextBlockId: 1,
+                        nextConnectionId: 1,
+                        viewBox: { x: 0, y: 0, width: 1200, height: 800 }
+                    }
+                ],
+                currentDiagramId: 'diagram-5'
+            };
+
+            localStorage.setItem('cbdiag_diagrams', JSON.stringify(v2Data));
+
+            window.__cbdiag__.loadAllDiagrams();
+
+            // Create a new diagram - should get diagram-11 (one more than highest existing ID)
+            const newDiagram = window.__cbdiag__.createDiagram('New Diagram');
+            expect(newDiagram.id).toBe('diagram-11');
+        });
+
+        it('should restore nextDiagramId from v1 data', () => {
+            // Create v1 format data
+            const v1Data = {
+                version: 1,
+                diagrams: [
+                    {
+                        id: 'diagram-3',
+                        name: 'Test Diagram',
+                        blocks: [],
+                        connections: [],
+                        nextBlockId: 1,
+                        nextConnectionId: 1,
+                        viewBox: { x: 0, y: 0, width: 1200, height: 800 }
+                    }
+                ],
+                currentDiagramId: 'diagram-3'
+            };
+
+            localStorage.setItem('cbdiag_diagrams', JSON.stringify(v1Data));
+
+            window.__cbdiag__.loadAllDiagrams();
+
+            // Create a new diagram - should get diagram-4
+            const newDiagram = window.__cbdiag__.createDiagram('New Diagram');
+            expect(newDiagram.id).toBe('diagram-4');
+        });
+
+        it('should handle diagrams with non-standard IDs', () => {
+            // Create data with mix of standard and non-standard IDs
+            const v2Data = {
+                version: 2,
+                diagrams: [
+                    {
+                        id: 'diagram-2',
+                        name: 'Standard',
+                        blocks: [],
+                        connections: [],
+                        nextBlockId: 1,
+                        nextConnectionId: 1,
+                        viewBox: { x: 0, y: 0, width: 1200, height: 800 }
+                    },
+                    {
+                        id: 'custom-id',
+                        name: 'Custom',
+                        blocks: [],
+                        connections: [],
+                        nextBlockId: 1,
+                        nextConnectionId: 1,
+                        viewBox: { x: 0, y: 0, width: 1200, height: 800 }
+                    }
+                ],
+                currentDiagramId: 'diagram-2'
+            };
+
+            localStorage.setItem('cbdiag_diagrams', JSON.stringify(v2Data));
+
+            window.__cbdiag__.loadAllDiagrams();
+
+            // Should only use standard IDs for nextDiagramId calculation
+            const newDiagram = window.__cbdiag__.createDiagram('New Diagram');
+            expect(newDiagram.id).toBe('diagram-3');
+        });
     });
 
     describe('scheduleAutoSave', () => {
