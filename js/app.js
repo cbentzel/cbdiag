@@ -70,6 +70,7 @@
     // Property inputs
     const blockLabel = document.getElementById('block-label');
     const blockColor = document.getElementById('block-color');
+    const blockOpacity = document.getElementById('block-opacity');
     const blockWidth = document.getElementById('block-width');
     const blockHeight = document.getElementById('block-height');
     const blockZIndex = document.getElementById('block-zindex');
@@ -554,6 +555,7 @@
             height: 60,
             label: 'Block',
             color: '#4a90d9',
+            opacity: 1,
             zIndex: getMaxZIndex() + 1
         };
         state.blocks.push(block);
@@ -576,6 +578,7 @@
             height: 70,
             label: linkedDiagram.name,
             color: '#9b59b6',
+            opacity: 1,
             linkedDiagramId: linkedDiagramId,
             targetDiagramId: linkedDiagramId, // Alias for compatibility
             zIndex: getMaxZIndex() + 1
@@ -613,6 +616,7 @@
         rect.setAttribute('height', block.height);
         rect.setAttribute('rx', isProxy ? 8 : 4);
         rect.setAttribute('fill', block.color);
+        rect.setAttribute('fill-opacity', block.opacity !== undefined ? block.opacity : 1);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
 
         // For proxy blocks, update label from linked diagram name
@@ -915,6 +919,7 @@
             if (blockColor) blockColor.value = block.color;
         }
 
+        if (blockOpacity) blockOpacity.value = block.opacity !== undefined ? block.opacity : 1;
         if (blockWidth) blockWidth.value = block.width;
         if (blockHeight) blockHeight.value = block.height;
         if (blockZIndex) blockZIndex.value = block.zIndex || 0;
@@ -1120,6 +1125,14 @@
         }
 
         // Properties panel - common properties
+        if (blockOpacity) {
+            blockOpacity.addEventListener('input', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { opacity: parseFloat(e.target.value) });
+                }
+            });
+        }
+
         if (blockWidth) {
             blockWidth.addEventListener('change', (e) => {
                 if (state.selectedBlockId) {

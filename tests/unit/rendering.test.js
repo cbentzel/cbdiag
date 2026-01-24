@@ -54,6 +54,35 @@ describe('Rendering Functions', () => {
             expect(rect.getAttribute('fill')).toBe('#ff0000');
         });
 
+        it('should apply default opacity of 1', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+            window.__cbdiag__.renderBlock(block);
+
+            const blockElement = document.getElementById(block.id);
+            const rect = blockElement.querySelector('rect');
+            expect(rect.getAttribute('fill-opacity')).toBe('1');
+        });
+
+        it('should apply custom opacity', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+            window.__cbdiag__.updateBlock(block.id, { opacity: 0.5 }, false);
+            window.__cbdiag__.renderBlock(block);
+
+            const blockElement = document.getElementById(block.id);
+            const rect = blockElement.querySelector('rect');
+            expect(rect.getAttribute('fill-opacity')).toBe('0.5');
+        });
+
+        it('should handle opacity of 0 (fully transparent)', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+            window.__cbdiag__.updateBlock(block.id, { opacity: 0 }, false);
+            window.__cbdiag__.renderBlock(block);
+
+            const blockElement = document.getElementById(block.id);
+            const rect = blockElement.querySelector('rect');
+            expect(rect.getAttribute('fill-opacity')).toBe('0');
+        });
+
         it('should display block label', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.updateBlock(block.id, { label: 'Test Block' }, false);

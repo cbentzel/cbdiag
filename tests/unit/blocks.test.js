@@ -30,6 +30,7 @@ describe('Block Operations', () => {
             expect(block.height).toBe(60);
             expect(block.label).toBe('Block');
             expect(block.color).toBe('#4a90d9');
+            expect(block.opacity).toBe(1);
         });
 
         it('should assign highest z-index to new blocks', () => {
@@ -73,6 +74,17 @@ describe('Block Operations', () => {
             expect(updatedBlock.color).toBe('#ff0000');
             expect(updatedBlock.width).toBe(200);
             expect(updatedBlock.height).toBe(100);
+        });
+
+        it('should update block opacity', () => {
+            const block = window.__cbdiag__.createBlock(100, 100);
+
+            window.__cbdiag__.updateBlock(block.id, { opacity: 0.5 });
+
+            const state = window.__cbdiag__.getState();
+            const updatedBlock = state.blocks.find(b => b.id === block.id);
+
+            expect(updatedBlock.opacity).toBe(0.5);
         });
 
         it('should update block position', () => {
@@ -225,6 +237,13 @@ describe('Block Operations', () => {
             const proxy = window.__cbdiag__.createProxyBlock(100, 100, targetDiagram.id);
 
             expect(proxy.color).toBe('#9b59b6');
+        });
+
+        it('should have default opacity of 1', () => {
+            const targetDiagram = window.__cbdiag__.createDiagram();
+            const proxy = window.__cbdiag__.createProxyBlock(100, 100, targetDiagram.id);
+
+            expect(proxy.opacity).toBe(1);
         });
 
         it('should assign highest z-index to new proxy blocks', () => {
