@@ -30,7 +30,7 @@ describe('Block Operations', () => {
             expect(block.height).toBe(60);
             expect(block.label).toBe('Block');
             expect(block.color).toBe('#4a90d9');
-            expect(block.opacity).toBe(1);
+            expect(block.opacity).toBe(0);
         });
 
         it('should assign highest z-index to new blocks', () => {
@@ -239,11 +239,11 @@ describe('Block Operations', () => {
             expect(proxy.color).toBe('#9b59b6');
         });
 
-        it('should have default opacity of 1', () => {
+        it('should have default opacity of 0 (no transparency)', () => {
             const targetDiagram = window.__cbdiag__.createDiagram();
             const proxy = window.__cbdiag__.createProxyBlock(100, 100, targetDiagram.id);
 
-            expect(proxy.opacity).toBe(1);
+            expect(proxy.opacity).toBe(0);
         });
 
         it('should assign highest z-index to new proxy blocks', () => {

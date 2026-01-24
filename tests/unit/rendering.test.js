@@ -54,7 +54,7 @@ describe('Rendering Functions', () => {
             expect(rect.getAttribute('fill')).toBe('#ff0000');
         });
 
-        it('should apply default opacity of 1', () => {
+        it('should apply full fill-opacity when transparency is 0 (default)', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.renderBlock(block);
 
@@ -63,7 +63,7 @@ describe('Rendering Functions', () => {
             expect(rect.getAttribute('fill-opacity')).toBe('1');
         });
 
-        it('should apply custom opacity', () => {
+        it('should apply half fill-opacity when transparency is 0.5', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.updateBlock(block.id, { opacity: 0.5 }, false);
             window.__cbdiag__.renderBlock(block);
@@ -73,9 +73,9 @@ describe('Rendering Functions', () => {
             expect(rect.getAttribute('fill-opacity')).toBe('0.5');
         });
 
-        it('should handle opacity of 0 (fully transparent)', () => {
+        it('should apply zero fill-opacity when transparency is 1 (fully transparent)', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
-            window.__cbdiag__.updateBlock(block.id, { opacity: 0 }, false);
+            window.__cbdiag__.updateBlock(block.id, { opacity: 1 }, false);
             window.__cbdiag__.renderBlock(block);
 
             const blockElement = document.getElementById(block.id);

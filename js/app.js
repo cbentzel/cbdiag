@@ -555,7 +555,7 @@
             height: 60,
             label: 'Block',
             color: '#4a90d9',
-            opacity: 1,
+            opacity: 0,
             zIndex: getMaxZIndex() + 1
         };
         state.blocks.push(block);
@@ -578,7 +578,7 @@
             height: 70,
             label: linkedDiagram.name,
             color: '#9b59b6',
-            opacity: 1,
+            opacity: 0,
             linkedDiagramId: linkedDiagramId,
             targetDiagramId: linkedDiagramId, // Alias for compatibility
             zIndex: getMaxZIndex() + 1
@@ -616,7 +616,7 @@
         rect.setAttribute('height', block.height);
         rect.setAttribute('rx', isProxy ? 8 : 4);
         rect.setAttribute('fill', block.color);
-        rect.setAttribute('fill-opacity', block.opacity !== undefined ? block.opacity : 1);
+        rect.setAttribute('fill-opacity', block.opacity !== undefined ? 1 - block.opacity : 1);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
 
         // For proxy blocks, update label from linked diagram name
