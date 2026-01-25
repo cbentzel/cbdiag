@@ -200,7 +200,11 @@ body {
     flex: 1;
     position: relative;
     overflow: hidden;
-    background: #fafafa;
+    background-color: #fafafa;
+    background-image:
+        linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
 }
 
 .canvas {
@@ -328,21 +332,6 @@ body {
     cursor: pointer;
 }
 
-/* Grid pattern */
-.canvas-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image:
-        linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
-    background-size: 20px 20px;
-    pointer-events: none;
-    z-index: -1;
-}
 
 /* Proxy Blocks */
 .block.proxy rect {
