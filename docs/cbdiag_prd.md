@@ -41,6 +41,18 @@ This enables recursive composition - a complex system can be represented as a si
 - Navigate back up the hierarchy
 - Breadcrumb or similar indication of current location in hierarchy
 
+### Nesting and blocks
+- Blocks can support parenting/nesting. This is also recursive.
+- For the following examples, assume Block B and Block C have Block A as a parent. Block D has Block C as a parent.
+- If Block A is translated, Block B, Block C, and transitively Block D translate the same way.
+- If Block A is scaled or resized, Block B and Block C retain their relative positions within block A rather than change relative positions with Block A. Block D also retains relative size within Block C, which transitively has same position in Block A.
+- Block A is constrained from scaling or resizing to be too small -> e.g. it can not be scaled to a point where it can no longer contain the blocks within it. A user has to manually tune Block B, Block C, and Block D locations or sizes so they fit within Block A.
+- There should also always be enough of a size gap/pad so sub-blocks do not fill the entire area of the parent block. This will allow selecting the parent block.
+- Child Blocks automatically have a z-level the same as the parent block.
+- To establish a parenting relationship, as a user I would ideally be able to drag and hold a block over the to-be-parent and have it inherit, with some amount of animation like pulsing on the parent to indicate that the parenting will happen. For example, if I drag Block E over free space in Block A and leave it there, it will show an animation and then parent when the mouse releases. Also, if I do this over Block D it would show the D parenting relationship. It should always select the block lowest in the tree parenting level as the parent. 
+- If during parenting operation the parent block is not large enough to contain the new child block and maintain padding/gap, the parent block will get larger to accomodate it.
+- Unparenting will happen by dragging a child block out of a parent block. Similar to creating a parenting relationship, there will be an animation indicating that the unparenting will happen, and it will happen on mouse unclick.
+ 
 ### Persistence
 - Save diagrams
 - Load existing diagrams
