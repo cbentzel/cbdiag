@@ -61,6 +61,26 @@
     };
 
     // ============================================
+    // Block Colors
+    // ============================================
+    const BLOCK_COLORS = [
+        '#4a90d9', // Blue
+        '#50c878', // Emerald
+        '#f5a623', // Orange
+        '#9b59b6', // Purple
+        '#e74c3c', // Red
+        '#1abc9c', // Teal
+        '#f39c12', // Yellow
+        '#3498db', // Light Blue
+        '#e91e63', // Pink
+        '#00bcd4'  // Cyan
+    ];
+
+    function getRandomColor() {
+        return BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+    }
+
+    // ============================================
     // DOM Elements
     // ============================================
     const canvas = document.getElementById('canvas');
@@ -961,6 +981,52 @@
     // ============================================
     // Block Functions
     // ============================================
+    function findNonOverlappingPosition(centerX, centerY, width, height) {
+        const padding = 20;
+        const maxAttempts = 50;
+
+        // Get top-level blocks only (not nested inside parents)
+        const topLevelBlocks = state.blocks.filter(b => !b.parentBlockId);
+
+        function overlaps(x, y) {
+            for (const block of topLevelBlocks) {
+                const globalPos = localToGlobal(block);
+                if (x < globalPos.x + block.width + padding &&
+                    x + width + padding > globalPos.x &&
+                    y < globalPos.y + block.height + padding &&
+                    y + height + padding > globalPos.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Try the center position first
+        let x = centerX - width / 2;
+        let y = centerY - height / 2;
+        if (!overlaps(x, y)) {
+            return { x: x + width / 2, y: y + height / 2 };
+        }
+
+        // Spiral outward to find a free spot
+        const step = 80;
+        for (let ring = 1; ring <= maxAttempts; ring++) {
+            for (let dx = -ring; dx <= ring; dx++) {
+                for (let dy = -ring; dy <= ring; dy++) {
+                    if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
+                    x = centerX - width / 2 + dx * step;
+                    y = centerY - height / 2 + dy * step;
+                    if (!overlaps(x, y)) {
+                        return { x: x + width / 2, y: y + height / 2 };
+                    }
+                }
+            }
+        }
+
+        // Fallback: offset from center
+        return { x: centerX + topLevelBlocks.length * 30, y: centerY + topLevelBlocks.length * 30 };
+    }
+
     function createBlock(x, y, parentBlockId = null) {
         const blockNum = state.nextBlockId;
         const block = {
@@ -971,7 +1037,7 @@
             width: 120,
             height: 60,
             label: `Block ${blockNum}`,
-            color: '#4a90d9',
+            color: getRandomColor(),
             opacity: 0,
             zIndex: getMaxZIndex() + 1,
             parentBlockId: parentBlockId,
@@ -1513,7 +1579,8 @@
                     x: state.viewBox.x + state.viewBox.width / 2,
                     y: state.viewBox.y + state.viewBox.height / 2
                 };
-                createBlock(center.x, center.y);
+                const pos = findNonOverlappingPosition(center.x, center.y, 120, 60);
+                createBlock(pos.x, pos.y);
             });
         }
 

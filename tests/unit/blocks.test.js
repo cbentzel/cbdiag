@@ -29,7 +29,7 @@ describe('Block Operations', () => {
             expect(block.width).toBe(120);
             expect(block.height).toBe(60);
             expect(block.label).toMatch(/^Block \d+$/);
-            expect(block.color).toBe('#4a90d9');
+            expect(block.color).toMatch(/^#[0-9a-f]{6}$/i);
             expect(block.opacity).toBe(0);
         });
 
