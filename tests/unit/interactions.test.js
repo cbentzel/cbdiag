@@ -65,7 +65,7 @@ describe('Mouse Interaction Handlers', () => {
             window.__cbdiag__.renderCanvas();
 
             const blockElement = document.querySelector(`[data-block-id="${block.id}"]`);
-            const resizeHandle = blockElement.querySelector('[data-resize="true"]');
+            const resizeHandle = blockElement.querySelector('[data-resize="se"]');
 
             const mouseEvent = new MouseEvent('mousedown', {
                 bubbles: true,
@@ -204,7 +204,7 @@ describe('Mouse Interaction Handlers', () => {
             window.__cbdiag__.renderCanvas();
 
             const blockElement = document.querySelector(`[data-block-id="${block.id}"]`);
-            const resizeHandle = blockElement.querySelector('[data-resize="true"]');
+            const resizeHandle = blockElement.querySelector('[data-resize="se"]');
 
             // Start resize
             let mouseEvent = new MouseEvent('mousedown', {
@@ -233,7 +233,7 @@ describe('Mouse Interaction Handlers', () => {
             window.__cbdiag__.renderCanvas();
 
             const blockElement = document.querySelector(`[data-block-id="${block.id}"]`);
-            const resizeHandle = blockElement.querySelector('[data-resize="true"]');
+            const resizeHandle = blockElement.querySelector('[data-resize="se"]');
 
             // Start resize
             let mouseEvent = new MouseEvent('mousedown', {
@@ -353,7 +353,7 @@ describe('Mouse Interaction Handlers', () => {
             window.__cbdiag__.renderCanvas();
 
             const blockElement = document.querySelector(`[data-block-id="${block.id}"]`);
-            const resizeHandle = blockElement.querySelector('[data-resize="true"]');
+            const resizeHandle = blockElement.querySelector('[data-resize="se"]');
 
             // Start resize
             let mouseEvent = new MouseEvent('mousedown', {

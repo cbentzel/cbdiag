@@ -153,16 +153,19 @@ describe('Rendering Functions', () => {
             expect(text.textContent).toBe('Target Diagram');
         });
 
-        it('should create resize handle', () => {
+        it('should create resize handles for all corners', () => {
             const block = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.renderBlock(block);
 
             const blockElement = document.getElementById(block.id);
-            const resizeHandle = blockElement.querySelector('[data-resize="true"]');
-            expect(resizeHandle).toBeDefined();
-            expect(resizeHandle.tagName).toBe('rect');
-            expect(resizeHandle.getAttribute('width')).toBe('10');
-            expect(resizeHandle.getAttribute('height')).toBe('10');
+            const corners = ['nw', 'ne', 'sw', 'se'];
+            for (const corner of corners) {
+                const resizeHandle = blockElement.querySelector(`[data-resize="${corner}"]`);
+                expect(resizeHandle).toBeDefined();
+                expect(resizeHandle.tagName).toBe('rect');
+                expect(resizeHandle.getAttribute('width')).toBe('10');
+                expect(resizeHandle.getAttribute('height')).toBe('10');
+            }
         });
 
         it('should insert block in correct z-index order (lower z-index first)', () => {

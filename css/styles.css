@@ -256,13 +256,17 @@ body {
     fill: white;
     stroke: #666;
     stroke-width: 1;
-    cursor: se-resize;
     opacity: 0;
 }
 
 .block.selected .resize-handle {
     opacity: 1;
 }
+
+.block .resize-nw { cursor: nw-resize; }
+.block .resize-ne { cursor: ne-resize; }
+.block .resize-sw { cursor: sw-resize; }
+.block .resize-se { cursor: se-resize; }
 
 /* Connections */
 .connection {

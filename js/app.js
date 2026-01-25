@@ -38,7 +38,8 @@
 
         // Resize state
         isResizing: false,
-        resizeStart: { x: 0, y: 0, width: 0, height: 0 },
+        resizeCorner: null, // 'nw', 'ne', 'sw', 'se'
+        resizeStart: { x: 0, y: 0, width: 0, height: 0, blockX: 0, blockY: 0 },
 
         // Auto-save
         saveTimeout: null,
@@ -184,18 +185,22 @@
     }
 
     class ResizeBlockCommand {
-        constructor(blockId, oldW, oldH, newW, newH) {
+        constructor(blockId, oldX, oldY, oldW, oldH, newX, newY, newW, newH) {
             this.blockId = blockId;
+            this.oldX = oldX;
+            this.oldY = oldY;
             this.oldW = oldW;
             this.oldH = oldH;
+            this.newX = newX;
+            this.newY = newY;
             this.newW = newW;
             this.newH = newH;
         }
         execute() {
-            updateBlockInternal(this.blockId, { width: this.newW, height: this.newH }, false);
+            updateBlockInternal(this.blockId, { x: this.newX, y: this.newY, width: this.newW, height: this.newH }, false);
         }
         undo() {
-            updateBlockInternal(this.blockId, { width: this.oldW, height: this.oldH }, false);
+            updateBlockInternal(this.blockId, { x: this.oldX, y: this.oldY, width: this.oldW, height: this.oldH }, false);
         }
     }
 
@@ -1467,15 +1472,25 @@
             g.appendChild(icon);
         }
 
-        const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        resizeHandle.setAttribute('class', 'resize-handle');
-        resizeHandle.setAttribute('x', gx + block.width - 10);
-        resizeHandle.setAttribute('y', gy + block.height - 10);
-        resizeHandle.setAttribute('width', 10);
-        resizeHandle.setAttribute('height', 10);
-        resizeHandle.setAttribute('data-resize', 'true');
+        // Create resize handles for all four corners
+        const handleSize = 10;
+        const corners = [
+            { corner: 'nw', x: gx, y: gy },
+            { corner: 'ne', x: gx + block.width - handleSize, y: gy },
+            { corner: 'sw', x: gx, y: gy + block.height - handleSize },
+            { corner: 'se', x: gx + block.width - handleSize, y: gy + block.height - handleSize }
+        ];
 
-        g.appendChild(resizeHandle);
+        for (const { corner, x, y } of corners) {
+            const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            resizeHandle.setAttribute('class', `resize-handle resize-${corner}`);
+            resizeHandle.setAttribute('x', x);
+            resizeHandle.setAttribute('y', y);
+            resizeHandle.setAttribute('width', handleSize);
+            resizeHandle.setAttribute('height', handleSize);
+            resizeHandle.setAttribute('data-resize', corner);
+            g.appendChild(resizeHandle);
+        }
 
         // Insert block at correct position based on z-index
         const currentZ = block.zIndex || 0;
@@ -2174,20 +2189,24 @@
             return;
         }
 
-        if (target.getAttribute('data-resize') === 'true') {
+        const resizeCorner = target.getAttribute('data-resize');
+        if (resizeCorner) {
             const blockId = target.closest('.block').getAttribute('data-block-id');
             const block = state.blocks.find(b => b.id === blockId);
             if (block) {
                 state.isResizing = true;
+                state.resizeCorner = resizeCorner;
                 state.selectedBlockId = blockId;
                 state.resizeStart = {
                     x: point.x,
                     y: point.y,
                     width: block.width,
-                    height: block.height
+                    height: block.height,
+                    blockX: block.x,
+                    blockY: block.y
                 };
                 // Capture start size for undo command
-                state.resizeStartSize = { width: block.width, height: block.height };
+                state.resizeStartSize = { width: block.width, height: block.height, x: block.x, y: block.y };
                 selectBlock(blockId);
             }
             e.preventDefault();
@@ -2246,10 +2265,51 @@
             if (block) {
                 // Get minimum size based on children
                 const minSize = getMinSizeForChildren(block);
-                const newWidth = Math.max(minSize.minWidth, state.resizeStart.width + (point.x - state.resizeStart.x));
-                const newHeight = Math.max(minSize.minHeight, state.resizeStart.height + (point.y - state.resizeStart.y));
+                const deltaX = point.x - state.resizeStart.x;
+                const deltaY = point.y - state.resizeStart.y;
+
+                let newX = state.resizeStart.blockX;
+                let newY = state.resizeStart.blockY;
+                let newWidth = state.resizeStart.width;
+                let newHeight = state.resizeStart.height;
+
+                switch (state.resizeCorner) {
+                    case 'se': // bottom-right
+                        newWidth = state.resizeStart.width + deltaX;
+                        newHeight = state.resizeStart.height + deltaY;
+                        break;
+                    case 'sw': // bottom-left
+                        newX = state.resizeStart.blockX + deltaX;
+                        newWidth = state.resizeStart.width - deltaX;
+                        newHeight = state.resizeStart.height + deltaY;
+                        break;
+                    case 'ne': // top-right
+                        newY = state.resizeStart.blockY + deltaY;
+                        newWidth = state.resizeStart.width + deltaX;
+                        newHeight = state.resizeStart.height - deltaY;
+                        break;
+                    case 'nw': // top-left
+                        newX = state.resizeStart.blockX + deltaX;
+                        newY = state.resizeStart.blockY + deltaY;
+                        newWidth = state.resizeStart.width - deltaX;
+                        newHeight = state.resizeStart.height - deltaY;
+                        break;
+                }
+
+                // Enforce minimum size
+                newWidth = Math.max(minSize.minWidth, newWidth);
+                newHeight = Math.max(minSize.minHeight, newHeight);
+
+                // Adjust position if width/height was clamped (for corners that move origin)
+                if (state.resizeCorner === 'sw' || state.resizeCorner === 'nw') {
+                    newX = state.resizeStart.blockX + state.resizeStart.width - newWidth;
+                }
+                if (state.resizeCorner === 'ne' || state.resizeCorner === 'nw') {
+                    newY = state.resizeStart.blockY + state.resizeStart.height - newHeight;
+                }
+
                 // Use internal version - command created on mouseup
-                updateBlockInternal(state.selectedBlockId, { width: newWidth, height: newHeight }, false);
+                updateBlockInternal(state.selectedBlockId, { x: newX, y: newY, width: newWidth, height: newHeight }, false);
             }
             return;
         }
@@ -2326,12 +2386,15 @@
             scheduleAutoSave();
         } else if (state.isResizing && state.selectedBlockId) {
             const block = state.blocks.find(b => b.id === state.selectedBlockId);
-            // Create resize command if size changed
+            // Create resize command if size or position changed
             if (block && state.resizeStartSize) {
-                if (block.width !== state.resizeStartSize.width || block.height !== state.resizeStartSize.height) {
+                if (block.width !== state.resizeStartSize.width || block.height !== state.resizeStartSize.height ||
+                    block.x !== state.resizeStartSize.x || block.y !== state.resizeStartSize.y) {
                     const cmd = new ResizeBlockCommand(
                         block.id,
+                        state.resizeStartSize.x, state.resizeStartSize.y,
                         state.resizeStartSize.width, state.resizeStartSize.height,
+                        block.x, block.y,
                         block.width, block.height
                     );
                     pushCommand(cmd);
@@ -2343,6 +2406,7 @@
 
         state.isDragging = false;
         state.isResizing = false;
+        state.resizeCorner = null;
         state.isPanning = false;
         canvas.classList.remove('panning');
     }
