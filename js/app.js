@@ -962,6 +962,7 @@
     // Block Functions
     // ============================================
     function createBlock(x, y, parentBlockId = null) {
+        const blockNum = state.nextBlockId;
         const block = {
             id: generateId('block'),
             type: 'block',
@@ -969,7 +970,7 @@
             y: y - 30,
             width: 120,
             height: 60,
-            label: 'Block',
+            label: `Block ${blockNum}`,
             color: '#4a90d9',
             opacity: 0,
             zIndex: getMaxZIndex() + 1,
