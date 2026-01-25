@@ -1158,6 +1158,14 @@
         }
 
         updateConnectionsForBlock(blockId);
+
+        // Re-render all descendants since their global positions depend on this block
+        const descendants = getDescendants(blockId);
+        for (const descendant of descendants) {
+            renderBlock(descendant);
+            updateConnectionsForBlock(descendant.id);
+        }
+
         if (triggerSave) scheduleAutoSave();
     }
 
