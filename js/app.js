@@ -1050,6 +1050,9 @@
         child.x = localPos.x;
         child.y = localPos.y;
 
+        // Inherit z-order from parent (child should render above parent)
+        child.zIndex = parent.zIndex + 1;
+
         // Auto-resize parent if needed
         autoResizeParent(parent);
 
