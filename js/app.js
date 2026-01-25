@@ -42,7 +42,22 @@
 
         // Auto-save
         saveTimeout: null,
-        isDirty: false
+        isDirty: false,
+
+        // Nesting state
+        isParentingPreview: false,
+        parentingTarget: null,
+        parentingTimer: null,
+        isUnparentingPreview: false
+    };
+
+    // ============================================
+    // Nesting Constants
+    // ============================================
+    const NESTING_CONSTANTS = {
+        PARENT_PADDING: 20,           // Min padding between parent edge and children
+        PARENTING_HOLD_DELAY: 500,    // ms to hold before parenting activates
+        MIN_PARENT_SIZE_BUFFER: 40    // Extra buffer when auto-resizing parent
     };
 
     // ============================================
@@ -396,6 +411,17 @@
                         if (match) {
                             nextDiagramId = Math.max(nextDiagramId, parseInt(match[1], 10) + 1);
                         }
+                        // Migrate: add nesting fields to blocks that don't have them
+                        if (d.blocks) {
+                            d.blocks.forEach(block => {
+                                if (block.parentBlockId === undefined) {
+                                    block.parentBlockId = null;
+                                }
+                                if (block.childBlockIds === undefined) {
+                                    block.childBlockIds = [];
+                                }
+                            });
+                        }
                     });
                     const currentId = data.currentDiagramId || (data.diagrams[0] && data.diagrams[0].id);
                     if (currentId) {
@@ -543,9 +569,399 @@
     }
 
     // ============================================
+    // Nesting - Coordinate Transformations
+    // ============================================
+
+    // Convert local coordinates to global SVG coordinates
+    function localToGlobal(block) {
+        let globalX = block.x;
+        let globalY = block.y;
+        let currentParentId = block.parentBlockId;
+
+        while (currentParentId) {
+            const parent = state.blocks.find(b => b.id === currentParentId);
+            if (!parent) break;
+            globalX += parent.x;
+            globalY += parent.y;
+            currentParentId = parent.parentBlockId;
+        }
+
+        return { x: globalX, y: globalY };
+    }
+
+    // Convert global SVG coordinates to local coordinates relative to parent
+    function globalToLocal(globalX, globalY, parentBlockId) {
+        if (!parentBlockId) {
+            return { x: globalX, y: globalY };
+        }
+
+        let localX = globalX;
+        let localY = globalY;
+        let currentParentId = parentBlockId;
+
+        // Build parent chain
+        const parents = [];
+        while (currentParentId) {
+            const parent = state.blocks.find(b => b.id === currentParentId);
+            if (!parent) break;
+            parents.push(parent);
+            currentParentId = parent.parentBlockId;
+        }
+
+        // Subtract parent positions from outermost to innermost
+        for (let i = parents.length - 1; i >= 0; i--) {
+            localX -= parents[i].x;
+            localY -= parents[i].y;
+        }
+
+        return { x: localX, y: localY };
+    }
+
+    // Get block's global bounding box
+    function getGlobalBounds(block) {
+        const globalPos = localToGlobal(block);
+        return {
+            x: globalPos.x,
+            y: globalPos.y,
+            width: block.width,
+            height: block.height,
+            right: globalPos.x + block.width,
+            bottom: globalPos.y + block.height
+        };
+    }
+
+    // Get all ancestors (parent, grandparent, etc.)
+    function getAncestors(blockId) {
+        const ancestors = [];
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return ancestors;
+
+        let currentParentId = block.parentBlockId;
+        while (currentParentId) {
+            const parent = state.blocks.find(b => b.id === currentParentId);
+            if (!parent) break;
+            ancestors.push(parent);
+            currentParentId = parent.parentBlockId;
+        }
+
+        return ancestors;
+    }
+
+    // Get all descendants recursively
+    function getDescendants(blockId) {
+        const descendants = [];
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return descendants;
+
+        function collectChildren(parentId) {
+            const parent = state.blocks.find(b => b.id === parentId);
+            if (!parent || !parent.childBlockIds) return;
+
+            for (const childId of parent.childBlockIds) {
+                const child = state.blocks.find(b => b.id === childId);
+                if (child) {
+                    descendants.push(child);
+                    collectChildren(childId);
+                }
+            }
+        }
+
+        collectChildren(blockId);
+        return descendants;
+    }
+
+    // Check if ancestorId is an ancestor of descendantId
+    function isAncestorOf(ancestorId, descendantId) {
+        const ancestors = getAncestors(descendantId);
+        return ancestors.some(a => a.id === ancestorId);
+    }
+
+    // ============================================
+    // Nesting - Parenting Operations
+    // ============================================
+
+    // Find the deepest potential parent block at the given point
+    function findPotentialParent(draggedBlock, point) {
+        const draggedBounds = getGlobalBounds(draggedBlock);
+        const draggedAncestors = getAncestors(draggedBlock.id);
+        const draggedDescendants = getDescendants(draggedBlock.id);
+
+        let bestParent = null;
+        let bestDepth = -1;
+
+        for (const block of state.blocks) {
+            // Skip self, ancestors, and descendants
+            if (block.id === draggedBlock.id) continue;
+            if (draggedAncestors.some(a => a.id === block.id)) continue;
+            if (draggedDescendants.some(d => d.id === block.id)) continue;
+
+            const bounds = getGlobalBounds(block);
+
+            // Check if point is inside this block
+            if (point.x >= bounds.x && point.x <= bounds.right &&
+                point.y >= bounds.y && point.y <= bounds.bottom) {
+
+                // Check if dragged block center is inside
+                const draggedCenterX = draggedBounds.x + draggedBounds.width / 2;
+                const draggedCenterY = draggedBounds.y + draggedBounds.height / 2;
+
+                if (draggedCenterX >= bounds.x && draggedCenterX <= bounds.right &&
+                    draggedCenterY >= bounds.y && draggedCenterY <= bounds.bottom) {
+
+                    // Calculate depth (number of ancestors)
+                    const depth = getAncestors(block.id).length;
+
+                    // Prefer deeper (more nested) blocks
+                    if (depth > bestDepth) {
+                        bestDepth = depth;
+                        bestParent = block;
+                    }
+                }
+            }
+        }
+
+        return bestParent;
+    }
+
+    // Perform parenting: make childId a child of parentId
+    function performParenting(childId, parentId) {
+        const child = state.blocks.find(b => b.id === childId);
+        const parent = state.blocks.find(b => b.id === parentId);
+        if (!child || !parent) return;
+
+        // Prevent cycles
+        if (isAncestorOf(childId, parentId)) return;
+
+        // Save child's global position before reparenting
+        const globalPos = getGlobalBounds(child);
+
+        // Remove from old parent if any
+        if (child.parentBlockId) {
+            const oldParent = state.blocks.find(b => b.id === child.parentBlockId);
+            if (oldParent && oldParent.childBlockIds) {
+                oldParent.childBlockIds = oldParent.childBlockIds.filter(id => id !== childId);
+            }
+        }
+
+        // Set new parent relationship
+        child.parentBlockId = parentId;
+        if (!parent.childBlockIds) parent.childBlockIds = [];
+        if (!parent.childBlockIds.includes(childId)) {
+            parent.childBlockIds.push(childId);
+        }
+
+        // Convert global position to local coordinates relative to new parent
+        const localPos = globalToLocal(globalPos.x, globalPos.y, parentId);
+        child.x = localPos.x;
+        child.y = localPos.y;
+
+        // Auto-resize parent if needed
+        autoResizeParent(parent);
+
+        // Re-render
+        renderCanvas();
+        scheduleAutoSave();
+    }
+
+    // Perform unparenting: remove child from its parent
+    function performUnparenting(childId) {
+        const child = state.blocks.find(b => b.id === childId);
+        if (!child || !child.parentBlockId) return;
+
+        // Save child's global position before unparenting
+        const globalPos = getGlobalBounds(child);
+
+        // Remove from parent's childBlockIds
+        const parent = state.blocks.find(b => b.id === child.parentBlockId);
+        if (parent && parent.childBlockIds) {
+            parent.childBlockIds = parent.childBlockIds.filter(id => id !== childId);
+        }
+
+        // Clear parent reference
+        child.parentBlockId = null;
+
+        // Set position to global coordinates
+        child.x = globalPos.x;
+        child.y = globalPos.y;
+
+        // Move to top of z-order
+        child.zIndex = getMaxZIndex() + 1;
+
+        // Re-render
+        renderCanvas();
+        scheduleAutoSave();
+    }
+
+    // Auto-resize parent to fit all children
+    function autoResizeParent(parent) {
+        if (!parent || !parent.childBlockIds || parent.childBlockIds.length === 0) return;
+
+        const padding = NESTING_CONSTANTS.PARENT_PADDING;
+        const buffer = NESTING_CONSTANTS.MIN_PARENT_SIZE_BUFFER;
+
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+
+        for (const childId of parent.childBlockIds) {
+            const child = state.blocks.find(b => b.id === childId);
+            if (!child) continue;
+
+            minX = Math.min(minX, child.x);
+            minY = Math.min(minY, child.y);
+            maxX = Math.max(maxX, child.x + child.width);
+            maxY = Math.max(maxY, child.y + child.height);
+        }
+
+        // Calculate required size
+        const requiredWidth = maxX + padding + buffer;
+        const requiredHeight = maxY + padding + buffer;
+
+        // Only enlarge, never shrink below minimum
+        let needsResize = false;
+        if (requiredWidth > parent.width) {
+            parent.width = requiredWidth;
+            needsResize = true;
+        }
+        if (requiredHeight > parent.height) {
+            parent.height = requiredHeight;
+            needsResize = true;
+        }
+
+        // Ensure children aren't at negative positions
+        if (minX < padding) {
+            const shift = padding - minX;
+            for (const childId of parent.childBlockIds) {
+                const child = state.blocks.find(b => b.id === childId);
+                if (child) child.x += shift;
+            }
+            parent.width += shift;
+            needsResize = true;
+        }
+        if (minY < padding) {
+            const shift = padding - minY;
+            for (const childId of parent.childBlockIds) {
+                const child = state.blocks.find(b => b.id === childId);
+                if (child) child.y += shift;
+            }
+            parent.height += shift;
+            needsResize = true;
+        }
+
+        // Recursively check if grandparent needs resizing
+        if (needsResize && parent.parentBlockId) {
+            const grandparent = state.blocks.find(b => b.id === parent.parentBlockId);
+            if (grandparent) {
+                autoResizeParent(grandparent);
+            }
+        }
+    }
+
+    // Get minimum size for a parent to contain its children
+    function getMinSizeForChildren(parentBlock) {
+        if (!parentBlock || !parentBlock.childBlockIds || parentBlock.childBlockIds.length === 0) {
+            return { minWidth: 50, minHeight: 30 }; // Default minimums
+        }
+
+        const padding = NESTING_CONSTANTS.PARENT_PADDING;
+        let maxRight = 0, maxBottom = 0;
+
+        for (const childId of parentBlock.childBlockIds) {
+            const child = state.blocks.find(b => b.id === childId);
+            if (!child) continue;
+            maxRight = Math.max(maxRight, child.x + child.width + padding);
+            maxBottom = Math.max(maxBottom, child.y + child.height + padding);
+        }
+
+        return {
+            minWidth: Math.max(50, maxRight),
+            minHeight: Math.max(30, maxBottom)
+        };
+    }
+
+    // Handle parenting detection during drag
+    function handleParentingDuringDrag(draggedBlock, mousePoint) {
+        // Check if we're dragging outside current parent (unparenting)
+        if (draggedBlock.parentBlockId) {
+            const parent = state.blocks.find(b => b.id === draggedBlock.parentBlockId);
+            if (parent) {
+                const parentBounds = getGlobalBounds(parent);
+                const childBounds = getGlobalBounds(draggedBlock);
+                const centerX = childBounds.x + childBounds.width / 2;
+                const centerY = childBounds.y + childBounds.height / 2;
+
+                // If center is outside parent, show unparenting preview
+                if (centerX < parentBounds.x || centerX > parentBounds.right ||
+                    centerY < parentBounds.y || centerY > parentBounds.bottom) {
+                    if (!state.isUnparentingPreview) {
+                        state.isUnparentingPreview = true;
+                        const blockEl = document.getElementById(draggedBlock.id);
+                        if (blockEl) blockEl.classList.add('unparenting-preview');
+                    }
+                    clearParentingTimer();
+                    return;
+                } else if (state.isUnparentingPreview) {
+                    state.isUnparentingPreview = false;
+                    const blockEl = document.getElementById(draggedBlock.id);
+                    if (blockEl) blockEl.classList.remove('unparenting-preview');
+                }
+            }
+        }
+
+        // Find potential new parent
+        const potentialParent = findPotentialParent(draggedBlock, mousePoint);
+
+        if (potentialParent && potentialParent.id !== draggedBlock.parentBlockId) {
+            if (state.parentingTarget !== potentialParent.id) {
+                // Clear previous target
+                clearParentingPreview();
+
+                // Start timer for new target
+                state.parentingTarget = potentialParent.id;
+                state.parentingTimer = setTimeout(() => {
+                    state.isParentingPreview = true;
+                    const targetEl = document.getElementById(potentialParent.id);
+                    if (targetEl) targetEl.classList.add('parenting-target');
+                }, NESTING_CONSTANTS.PARENTING_HOLD_DELAY);
+            }
+        } else if (!potentialParent || potentialParent.id === draggedBlock.parentBlockId) {
+            clearParentingPreview();
+        }
+    }
+
+    // Clear parenting preview state
+    function clearParentingPreview() {
+        clearParentingTimer();
+        if (state.parentingTarget) {
+            const targetEl = document.getElementById(state.parentingTarget);
+            if (targetEl) targetEl.classList.remove('parenting-target');
+        }
+        state.isParentingPreview = false;
+        state.parentingTarget = null;
+    }
+
+    // Clear just the timer
+    function clearParentingTimer() {
+        if (state.parentingTimer) {
+            clearTimeout(state.parentingTimer);
+            state.parentingTimer = null;
+        }
+    }
+
+    // Clear unparenting preview
+    function clearUnparentingPreview(block) {
+        if (state.isUnparentingPreview) {
+            state.isUnparentingPreview = false;
+            if (block) {
+                const blockEl = document.getElementById(block.id);
+                if (blockEl) blockEl.classList.remove('unparenting-preview');
+            }
+        }
+    }
+
+    // ============================================
     // Block Functions
     // ============================================
-    function createBlock(x, y) {
+    function createBlock(x, y, parentBlockId = null) {
         const block = {
             id: generateId('block'),
             type: 'block',
@@ -556,7 +972,9 @@
             label: 'Block',
             color: '#4a90d9',
             opacity: 0,
-            zIndex: getMaxZIndex() + 1
+            zIndex: getMaxZIndex() + 1,
+            parentBlockId: parentBlockId,
+            childBlockIds: []
         };
         state.blocks.push(block);
         renderBlock(block);
@@ -565,7 +983,7 @@
         return block;
     }
 
-    function createProxyBlock(x, y, linkedDiagramId) {
+    function createProxyBlock(x, y, linkedDiagramId, parentBlockId = null) {
         const linkedDiagram = state.diagrams.find(d => d.id === linkedDiagramId);
         if (!linkedDiagram) return null;
 
@@ -581,7 +999,9 @@
             opacity: 0,
             linkedDiagramId: linkedDiagramId,
             targetDiagramId: linkedDiagramId, // Alias for compatibility
-            zIndex: getMaxZIndex() + 1
+            zIndex: getMaxZIndex() + 1,
+            parentBlockId: parentBlockId,
+            childBlockIds: []
         };
         state.blocks.push(block);
         renderBlock(block);
@@ -600,6 +1020,11 @@
 
         const isProxy = block.type === 'proxy';
 
+        // Get global coordinates for rendering
+        const globalPos = localToGlobal(block);
+        const gx = globalPos.x;
+        const gy = globalPos.y;
+
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('id', block.id);
         g.setAttribute('class', 'block' + (isProxy ? ' proxy' : ''));
@@ -608,10 +1033,13 @@
             g.setAttribute('data-proxy', 'true');
             g.setAttribute('data-linked-diagram', block.linkedDiagramId);
         }
+        if (block.parentBlockId) {
+            g.setAttribute('data-parent-id', block.parentBlockId);
+        }
 
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', block.x);
-        rect.setAttribute('y', block.y);
+        rect.setAttribute('x', gx);
+        rect.setAttribute('y', gy);
         rect.setAttribute('width', block.width);
         rect.setAttribute('height', block.height);
         rect.setAttribute('rx', isProxy ? 8 : 4);
@@ -632,8 +1060,8 @@
         }
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', block.x + block.width / 2);
-        text.setAttribute('y', block.y + block.height / 2 + (isProxy ? 0 : 5));
+        text.setAttribute('x', gx + block.width / 2);
+        text.setAttribute('y', gy + block.height / 2 + (isProxy ? 0 : 5));
         text.setAttribute('text-anchor', 'middle');
         text.textContent = labelText;
 
@@ -644,8 +1072,8 @@
         if (isProxy) {
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             icon.setAttribute('class', 'proxy-icon');
-            icon.setAttribute('x', block.x + block.width / 2);
-            icon.setAttribute('y', block.y + block.height / 2 + 18);
+            icon.setAttribute('x', gx + block.width / 2);
+            icon.setAttribute('y', gy + block.height / 2 + 18);
             icon.setAttribute('text-anchor', 'middle');
             icon.setAttribute('font-size', '10');
             icon.setAttribute('fill', 'rgba(255,255,255,0.7)');
@@ -655,8 +1083,8 @@
 
         const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         resizeHandle.setAttribute('class', 'resize-handle');
-        resizeHandle.setAttribute('x', block.x + block.width - 10);
-        resizeHandle.setAttribute('y', block.y + block.height - 10);
+        resizeHandle.setAttribute('x', gx + block.width - 10);
+        resizeHandle.setAttribute('y', gy + block.height - 10);
         resizeHandle.setAttribute('width', 10);
         resizeHandle.setAttribute('height', 10);
         resizeHandle.setAttribute('data-resize', 'true');
@@ -734,6 +1162,27 @@
     }
 
     function deleteBlock(blockId) {
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return;
+
+        // Recursively delete all children first
+        if (block.childBlockIds && block.childBlockIds.length > 0) {
+            // Copy array since we'll be modifying it
+            const childIds = [...block.childBlockIds];
+            for (const childId of childIds) {
+                deleteBlock(childId);
+            }
+        }
+
+        // Remove from parent's childBlockIds if this block has a parent
+        if (block.parentBlockId) {
+            const parent = state.blocks.find(b => b.id === block.parentBlockId);
+            if (parent && parent.childBlockIds) {
+                parent.childBlockIds = parent.childBlockIds.filter(id => id !== blockId);
+            }
+        }
+
+        // Delete connections to/from this block
         state.connections = state.connections.filter(conn => {
             if (conn.fromBlockId === blockId || conn.toBlockId === blockId) {
                 const connEl = document.getElementById(conn.id);
@@ -757,27 +1206,36 @@
     // Connection Functions
     // ============================================
     function getAnchorPoint(block, side) {
-        const center = getBlockCenter(block);
+        // Use global coordinates for connection anchor points
+        const globalPos = localToGlobal(block);
+        const centerX = globalPos.x + block.width / 2;
+        const centerY = globalPos.y + block.height / 2;
+
         switch (side) {
             case 'top':
-                return { x: center.x, y: block.y };
+                return { x: centerX, y: globalPos.y };
             case 'bottom':
-                return { x: center.x, y: block.y + block.height };
+                return { x: centerX, y: globalPos.y + block.height };
             case 'left':
-                return { x: block.x, y: center.y };
+                return { x: globalPos.x, y: centerY };
             case 'right':
-                return { x: block.x + block.width, y: center.y };
+                return { x: globalPos.x + block.width, y: centerY };
             default:
-                return center;
+                return { x: centerX, y: centerY };
         }
     }
 
     function getBestSides(fromBlock, toBlock) {
-        const fromCenter = getBlockCenter(fromBlock);
-        const toCenter = getBlockCenter(toBlock);
+        // Use global coordinates for determining best sides
+        const fromGlobal = localToGlobal(fromBlock);
+        const toGlobal = localToGlobal(toBlock);
+        const fromCenterX = fromGlobal.x + fromBlock.width / 2;
+        const fromCenterY = fromGlobal.y + fromBlock.height / 2;
+        const toCenterX = toGlobal.x + toBlock.width / 2;
+        const toCenterY = toGlobal.y + toBlock.height / 2;
 
-        const dx = toCenter.x - fromCenter.x;
-        const dy = toCenter.y - fromCenter.y;
+        const dx = toCenterX - fromCenterX;
+        const dy = toCenterY - fromCenterY;
 
         let sideA, sideB;
 
@@ -923,6 +1381,24 @@
         if (blockWidth) blockWidth.value = block.width;
         if (blockHeight) blockHeight.value = block.height;
         if (blockZIndex) blockZIndex.value = block.zIndex || 0;
+
+        // Update parent info section
+        const parentInfoDiv = document.getElementById('parent-info');
+        const unparentBtn = document.getElementById('unparent-btn');
+        if (parentInfoDiv && unparentBtn) {
+            if (block.parentBlockId) {
+                const parent = state.blocks.find(b => b.id === block.parentBlockId);
+                const parentName = parent ? parent.label : 'Unknown';
+                parentInfoDiv.classList.remove('hidden');
+                const parentNameSpan = document.getElementById('parent-name');
+                if (parentNameSpan) {
+                    parentNameSpan.textContent = parentName;
+                }
+            } else {
+                parentInfoDiv.classList.add('hidden');
+            }
+        }
+
         propertiesPanel.classList.remove('hidden');
     }
 
@@ -1173,6 +1649,20 @@
             });
         }
 
+        // Unparent button
+        const unparentBtn = document.getElementById('unparent-btn');
+        if (unparentBtn) {
+            unparentBtn.addEventListener('click', () => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block && block.parentBlockId) {
+                        performUnparenting(state.selectedBlockId);
+                        showProperties(block);
+                    }
+                }
+            });
+        }
+
         // Canvas mouse events
         if (canvas) {
             canvas.addEventListener('mousedown', handleMouseDown);
@@ -1247,9 +1737,11 @@
 
             if (block) {
                 state.isDragging = true;
+                // Use global coordinates for drag offset calculation
+                const globalPos = localToGlobal(block);
                 state.dragOffset = {
-                    x: point.x - block.x,
-                    y: point.y - block.y
+                    x: point.x - globalPos.x,
+                    y: point.y - globalPos.y
                 };
             }
             e.preventDefault();
@@ -1285,17 +1777,33 @@
         if (state.isResizing && state.selectedBlockId) {
             const block = state.blocks.find(b => b.id === state.selectedBlockId);
             if (block) {
-                const newWidth = Math.max(50, state.resizeStart.width + (point.x - state.resizeStart.x));
-                const newHeight = Math.max(30, state.resizeStart.height + (point.y - state.resizeStart.y));
+                // Get minimum size based on children
+                const minSize = getMinSizeForChildren(block);
+                const newWidth = Math.max(minSize.minWidth, state.resizeStart.width + (point.x - state.resizeStart.x));
+                const newHeight = Math.max(minSize.minHeight, state.resizeStart.height + (point.y - state.resizeStart.y));
                 updateBlock(state.selectedBlockId, { width: newWidth, height: newHeight }, false);
             }
             return;
         }
 
         if (state.isDragging && state.selectedBlockId) {
-            const newX = point.x - state.dragOffset.x;
-            const newY = point.y - state.dragOffset.y;
-            updateBlock(state.selectedBlockId, { x: newX, y: newY }, false);
+            const block = state.blocks.find(b => b.id === state.selectedBlockId);
+            if (block) {
+                // Convert mouse position to local coordinates if block has parent
+                let newX, newY;
+                if (block.parentBlockId) {
+                    const localPos = globalToLocal(point.x - state.dragOffset.x, point.y - state.dragOffset.y, block.parentBlockId);
+                    newX = localPos.x;
+                    newY = localPos.y;
+                } else {
+                    newX = point.x - state.dragOffset.x;
+                    newY = point.y - state.dragOffset.y;
+                }
+                updateBlock(state.selectedBlockId, { x: newX, y: newY }, false);
+
+                // Handle parenting detection
+                handleParentingDuringDrag(block, point);
+            }
             return;
         }
 
@@ -1316,9 +1824,29 @@
     }
 
     function handleMouseUp(e) {
-        if (state.isDragging || state.isResizing) {
+        if (state.isDragging && state.selectedBlockId) {
+            const block = state.blocks.find(b => b.id === state.selectedBlockId);
+
+            // Handle unparenting
+            if (state.isUnparentingPreview && block && block.parentBlockId) {
+                performUnparenting(block.id);
+            }
+            // Handle parenting
+            else if (state.isParentingPreview && state.parentingTarget) {
+                performParenting(state.selectedBlockId, state.parentingTarget);
+            }
+
+            // Clear all preview states
+            clearParentingPreview();
+            if (block) {
+                clearUnparentingPreview(block);
+            }
+
+            scheduleAutoSave();
+        } else if (state.isResizing) {
             scheduleAutoSave();
         }
+
         state.isDragging = false;
         state.isResizing = false;
         state.isPanning = false;
@@ -1464,6 +1992,24 @@
             bringToFront,
             sendToBack,
 
+            // Nesting functions
+            localToGlobal,
+            globalToLocal,
+            getGlobalBounds,
+            getAncestors,
+            getDescendants,
+            isAncestorOf,
+            findPotentialParent,
+            performParenting,
+            performUnparenting,
+            autoResizeParent,
+            getMinSizeForChildren,
+            handleParentingDuringDrag,
+            clearParentingPreview,
+            clearParentingTimer,
+            clearUnparentingPreview,
+            NESTING_CONSTANTS: NESTING_CONSTANTS,
+
             // Persistence
             saveAllDiagrams,
             loadAllDiagrams,
@@ -1491,7 +2037,10 @@
                 isResizing: state.isResizing,
                 resizeStart: state.resizeStart,
                 viewBox: { ...state.viewBox },
-                isDirty: state.isDirty
+                isDirty: state.isDirty,
+                isParentingPreview: state.isParentingPreview,
+                parentingTarget: state.parentingTarget,
+                isUnparentingPreview: state.isUnparentingPreview
             }),
             resetState: () => {
                 state.diagrams = [];
@@ -1505,6 +2054,10 @@
                 state.selectedConnectionId = null;
                 state.mode = 'select';
                 state.connectionStart = null;
+                state.isParentingPreview = false;
+                state.parentingTarget = null;
+                state.parentingTimer = null;
+                state.isUnparentingPreview = false;
                 nextDiagramId = 1; // Reset diagram ID counter
                 // Safely clear DOM (elements might be null in tests)
                 if (blocksLayer) blocksLayer.innerHTML = '';

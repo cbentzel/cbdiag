@@ -500,3 +500,66 @@ body {
 .z-btn:active {
     background: #d8d8d8;
 }
+
+/* Nesting - Parenting Preview */
+.block.parenting-target rect {
+    animation: parentPulse 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes parentPulse {
+    0% {
+        stroke-width: 3;
+        stroke: #4CAF50;
+    }
+    100% {
+        stroke-width: 5;
+        stroke: #8BC34A;
+    }
+}
+
+/* Nesting - Unparenting Preview */
+.block.unparenting-preview rect {
+    stroke: #f44336;
+    stroke-width: 3;
+    stroke-dasharray: 8, 4;
+}
+
+/* Parent Info in Properties Panel */
+#parent-info {
+    margin-bottom: 12px;
+    padding: 8px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+#parent-info.hidden {
+    display: none;
+}
+
+#parent-info .parent-label {
+    color: #666;
+    margin-bottom: 4px;
+}
+
+#parent-info #parent-name {
+    font-weight: 500;
+    color: #333;
+}
+
+#unparent-btn {
+    margin-top: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #666;
+    transition: background 0.2s, color 0.2s;
+}
+
+#unparent-btn:hover {
+    background: #e8e8e8;
+    color: #333;
+}
