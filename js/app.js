@@ -1537,6 +1537,29 @@
         const block = state.blocks.find(b => b.id === blockId);
         if (!block) return;
 
+        // Handle z-index constraints
+        if (updates.zIndex !== undefined) {
+            // If block has a parent, ensure zIndex >= parent's zIndex
+            if (block.parentBlockId) {
+                const parent = state.blocks.find(b => b.id === block.parentBlockId);
+                if (parent && updates.zIndex < parent.zIndex) {
+                    updates.zIndex = parent.zIndex + 1;
+                }
+            }
+
+            // If block has children and zIndex is changing, propagate to children
+            const oldZIndex = block.zIndex || 0;
+            const newZIndex = updates.zIndex;
+            const zDelta = newZIndex - oldZIndex;
+
+            if (zDelta !== 0 && block.childBlockIds && block.childBlockIds.length > 0) {
+                const descendants = getDescendants(blockId);
+                for (const descendant of descendants) {
+                    descendant.zIndex = (descendant.zIndex || 0) + zDelta;
+                }
+            }
+        }
+
         Object.assign(block, updates);
         renderBlock(block);
         if (state.selectedBlockId === blockId) {
