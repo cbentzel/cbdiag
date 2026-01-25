@@ -156,6 +156,15 @@ body {
     background: #e8e8e8;
 }
 
+.tool-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tool-btn:disabled:hover {
+    background: white;
+}
+
 .tool-btn.active {
     background: #4a90d9;
     color: white;

@@ -48,7 +48,14 @@
         isParentingPreview: false,
         parentingTarget: null,
         parentingTimer: null,
-        isUnparentingPreview: false
+        isUnparentingPreview: false,
+
+        // Undo/Redo state
+        undoStack: [],
+        redoStack: [],
+        maxUndoDepth: 50,
+        dragStartPos: null,
+        resizeStartSize: null
     };
 
     // ============================================
@@ -81,6 +88,269 @@
     }
 
     // ============================================
+    // Command Classes for Undo/Redo
+    // ============================================
+    function deepClone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+    }
+
+    class CreateBlockCommand {
+        constructor(x, y, parentBlockId, blockData) {
+            this.x = x;
+            this.y = y;
+            this.parentBlockId = parentBlockId;
+            this.blockSnapshot = blockData ? deepClone(blockData) : null;
+            this.createdBlockId = blockData ? blockData.id : null;
+        }
+        execute() {
+            if (this.blockSnapshot) {
+                restoreBlock(this.blockSnapshot);
+                this.createdBlockId = this.blockSnapshot.id;
+            }
+        }
+        undo() {
+            deleteBlockInternal(this.createdBlockId, false);
+        }
+    }
+
+    class DeleteBlockCommand {
+        constructor(blockId) {
+            this.blockId = blockId;
+            this.blockSnapshot = null;
+            this.childSnapshots = [];
+            this.connectionSnapshots = [];
+            this.parentId = null;
+        }
+        execute() {
+            const block = state.blocks.find(b => b.id === this.blockId);
+            if (!block) return;
+
+            // Capture state before deleting
+            this.blockSnapshot = deepClone(block);
+            this.parentId = block.parentBlockId;
+
+            // Capture all descendants
+            const descendants = getDescendants(this.blockId);
+            this.childSnapshots = descendants.map(deepClone);
+
+            // Capture all connections involving this block or its descendants
+            const allBlockIds = [this.blockId, ...descendants.map(d => d.id)];
+            this.connectionSnapshots = state.connections
+                .filter(c => allBlockIds.includes(c.fromBlockId) || allBlockIds.includes(c.toBlockId))
+                .map(deepClone);
+
+            deleteBlockInternal(this.blockId, true);
+        }
+        undo() {
+            // Restore block first
+            restoreBlock(this.blockSnapshot);
+
+            // Restore children in order
+            this.childSnapshots.forEach(snapshot => restoreBlock(snapshot));
+
+            // Restore connections
+            this.connectionSnapshots.forEach(snapshot => restoreConnection(snapshot));
+        }
+    }
+
+    class UpdateBlockCommand {
+        constructor(blockId, updates, previousValues) {
+            this.blockId = blockId;
+            this.updates = deepClone(updates);
+            this.previousValues = deepClone(previousValues);
+        }
+        execute() {
+            updateBlockInternal(this.blockId, this.updates, false);
+        }
+        undo() {
+            updateBlockInternal(this.blockId, this.previousValues, false);
+        }
+    }
+
+    class MoveBlockCommand {
+        constructor(blockId, oldX, oldY, newX, newY) {
+            this.blockId = blockId;
+            this.oldX = oldX;
+            this.oldY = oldY;
+            this.newX = newX;
+            this.newY = newY;
+        }
+        execute() {
+            updateBlockInternal(this.blockId, { x: this.newX, y: this.newY }, false);
+        }
+        undo() {
+            updateBlockInternal(this.blockId, { x: this.oldX, y: this.oldY }, false);
+        }
+    }
+
+    class ResizeBlockCommand {
+        constructor(blockId, oldW, oldH, newW, newH) {
+            this.blockId = blockId;
+            this.oldW = oldW;
+            this.oldH = oldH;
+            this.newW = newW;
+            this.newH = newH;
+        }
+        execute() {
+            updateBlockInternal(this.blockId, { width: this.newW, height: this.newH }, false);
+        }
+        undo() {
+            updateBlockInternal(this.blockId, { width: this.oldW, height: this.oldH }, false);
+        }
+    }
+
+    class CreateConnectionCommand {
+        constructor(fromBlockId, toBlockId, connectionData) {
+            this.fromBlockId = fromBlockId;
+            this.toBlockId = toBlockId;
+            this.connectionSnapshot = connectionData ? deepClone(connectionData) : null;
+            this.createdConnId = connectionData ? connectionData.id : null;
+        }
+        execute() {
+            if (this.connectionSnapshot) {
+                restoreConnection(this.connectionSnapshot);
+                this.createdConnId = this.connectionSnapshot.id;
+            }
+        }
+        undo() {
+            deleteConnectionInternal(this.createdConnId);
+        }
+    }
+
+    class DeleteConnectionCommand {
+        constructor(connId) {
+            this.connId = connId;
+            this.connectionSnapshot = null;
+        }
+        execute() {
+            const conn = state.connections.find(c => c.id === this.connId);
+            if (conn) {
+                this.connectionSnapshot = deepClone(conn);
+            }
+            deleteConnectionInternal(this.connId);
+        }
+        undo() {
+            if (this.connectionSnapshot) {
+                restoreConnection(this.connectionSnapshot);
+            }
+        }
+    }
+
+    class ParentBlockCommand {
+        constructor(childId, newParentId, oldParentId, oldPosition, newPosition) {
+            this.childId = childId;
+            this.newParentId = newParentId;
+            this.oldParentId = oldParentId;
+            this.oldPosition = oldPosition;
+            this.newPosition = newPosition;
+        }
+        execute() {
+            performParentingInternal(this.childId, this.newParentId);
+        }
+        undo() {
+            if (this.oldParentId) {
+                performParentingInternal(this.childId, this.oldParentId);
+            } else {
+                performUnparentingInternal(this.childId);
+            }
+            // Restore original position
+            updateBlockInternal(this.childId, { x: this.oldPosition.x, y: this.oldPosition.y }, false);
+        }
+    }
+
+    class UnparentBlockCommand {
+        constructor(childId, oldParentId, oldPosition, newPosition) {
+            this.childId = childId;
+            this.oldParentId = oldParentId;
+            this.oldPosition = oldPosition;
+            this.newPosition = newPosition;
+        }
+        execute() {
+            performUnparentingInternal(this.childId);
+        }
+        undo() {
+            performParentingInternal(this.childId, this.oldParentId);
+            updateBlockInternal(this.childId, { x: this.oldPosition.x, y: this.oldPosition.y }, false);
+        }
+    }
+
+    // ============================================
+    // Command Stack Manager
+    // ============================================
+    function executeCommand(command) {
+        command.execute();
+        state.undoStack.push(command);
+        state.redoStack = [];
+        if (state.undoStack.length > state.maxUndoDepth) {
+            state.undoStack.shift();
+        }
+        updateUndoRedoButtons();
+        scheduleAutoSave();
+    }
+
+    function pushCommand(command) {
+        // Push without executing (for operations already performed like drag/resize)
+        state.undoStack.push(command);
+        state.redoStack = [];
+        if (state.undoStack.length > state.maxUndoDepth) {
+            state.undoStack.shift();
+        }
+        updateUndoRedoButtons();
+    }
+
+    function undo() {
+        if (state.undoStack.length === 0) return;
+        const command = state.undoStack.pop();
+        command.undo();
+        state.redoStack.push(command);
+        updateUndoRedoButtons();
+        scheduleAutoSave();
+    }
+
+    function redo() {
+        if (state.redoStack.length === 0) return;
+        const command = state.redoStack.pop();
+        command.execute();
+        state.undoStack.push(command);
+        updateUndoRedoButtons();
+        scheduleAutoSave();
+    }
+
+    function clearUndoRedo() {
+        state.undoStack = [];
+        state.redoStack = [];
+        updateUndoRedoButtons();
+    }
+
+    function updateUndoRedoButtons() {
+        const undoBtn = document.getElementById('undo-btn');
+        const redoBtn = document.getElementById('redo-btn');
+        if (undoBtn) undoBtn.disabled = state.undoStack.length === 0;
+        if (redoBtn) redoBtn.disabled = state.redoStack.length === 0;
+    }
+
+    function restoreBlock(snapshot) {
+        // Add block back to state
+        state.blocks.push(deepClone(snapshot));
+
+        // Re-add to parent's childBlockIds if it has a parent
+        if (snapshot.parentBlockId) {
+            const parent = state.blocks.find(b => b.id === snapshot.parentBlockId);
+            if (parent && !parent.childBlockIds.includes(snapshot.id)) {
+                parent.childBlockIds.push(snapshot.id);
+            }
+        }
+
+        renderBlock(snapshot);
+        selectBlock(snapshot.id);
+    }
+
+    function restoreConnection(snapshot) {
+        state.connections.push(deepClone(snapshot));
+        renderConnection(snapshot);
+    }
+
+    // ============================================
     // DOM Elements
     // ============================================
     const canvas = document.getElementById('canvas');
@@ -101,6 +371,8 @@
     const addProxyBtn = document.getElementById('add-proxy-btn');
     const addConnectionBtn = document.getElementById('add-connection-btn');
     const deleteBtn = document.getElementById('delete-btn');
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
 
     // Property inputs
     const blockLabel = document.getElementById('block-label');
@@ -186,6 +458,9 @@
         state.selectedBlockId = null;
         state.selectedConnectionId = null;
         hideProperties();
+
+        // Clear undo/redo stacks when switching diagrams
+        clearUndoRedo();
 
         // Update UI
         if (diagramNameInput) {
@@ -744,7 +1019,7 @@
     }
 
     // Perform parenting: make childId a child of parentId
-    function performParenting(childId, parentId) {
+    function performParentingInternal(childId, parentId) {
         const child = state.blocks.find(b => b.id === childId);
         const parent = state.blocks.find(b => b.id === parentId);
         if (!child || !parent) return;
@@ -780,11 +1055,28 @@
 
         // Re-render
         renderCanvas();
+    }
+
+    function performParenting(childId, parentId) {
+        const child = state.blocks.find(b => b.id === childId);
+        if (!child) return;
+
+        const oldParentId = child.parentBlockId;
+        const oldPosition = { x: child.x, y: child.y };
+
+        performParentingInternal(childId, parentId);
+
+        // Capture new position after parenting
+        const childAfter = state.blocks.find(b => b.id === childId);
+        const newPosition = { x: childAfter.x, y: childAfter.y };
+
+        const cmd = new ParentBlockCommand(childId, parentId, oldParentId, oldPosition, newPosition);
+        pushCommand(cmd);
         scheduleAutoSave();
     }
 
-    // Perform unparenting: remove child from its parent
-    function performUnparenting(childId) {
+    // Perform unparenting: remove child from its parent (internal version)
+    function performUnparentingInternal(childId) {
         const child = state.blocks.find(b => b.id === childId);
         if (!child || !child.parentBlockId) return;
 
@@ -809,6 +1101,23 @@
 
         // Re-render
         renderCanvas();
+    }
+
+    function performUnparenting(childId) {
+        const child = state.blocks.find(b => b.id === childId);
+        if (!child || !child.parentBlockId) return;
+
+        const oldParentId = child.parentBlockId;
+        const oldPosition = { x: child.x, y: child.y };
+
+        performUnparentingInternal(childId);
+
+        // Capture new position after unparenting
+        const childAfter = state.blocks.find(b => b.id === childId);
+        const newPosition = { x: childAfter.x, y: childAfter.y };
+
+        const cmd = new UnparentBlockCommand(childId, oldParentId, oldPosition, newPosition);
+        pushCommand(cmd);
         scheduleAutoSave();
     }
 
@@ -1027,7 +1336,7 @@
         return { x: centerX + topLevelBlocks.length * 30, y: centerY + topLevelBlocks.length * 30 };
     }
 
-    function createBlock(x, y, parentBlockId = null) {
+    function createBlockInternal(x, y, parentBlockId = null) {
         const blockNum = state.nextBlockId;
         const block = {
             id: generateId('block'),
@@ -1046,6 +1355,13 @@
         state.blocks.push(block);
         renderBlock(block);
         selectBlock(block.id);
+        return block;
+    }
+
+    function createBlock(x, y, parentBlockId = null) {
+        const block = createBlockInternal(x, y, parentBlockId);
+        const cmd = new CreateBlockCommand(x, y, parentBlockId, block);
+        pushCommand(cmd);
         scheduleAutoSave();
         return block;
     }
@@ -1214,7 +1530,7 @@
         }
     }
 
-    function updateBlock(blockId, updates, triggerSave = true) {
+    function updateBlockInternal(blockId, updates, triggerSave = true) {
         const block = state.blocks.find(b => b.id === blockId);
         if (!block) return;
 
@@ -1236,16 +1552,32 @@
         if (triggerSave) scheduleAutoSave();
     }
 
-    function deleteBlock(blockId) {
+    function updateBlock(blockId, updates, triggerSave = true) {
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return;
+
+        // Capture previous values for undo
+        const previousValues = {};
+        for (const key of Object.keys(updates)) {
+            previousValues[key] = block[key];
+        }
+
+        updateBlockInternal(blockId, updates, triggerSave);
+
+        // Create command for undo
+        const cmd = new UpdateBlockCommand(blockId, updates, previousValues);
+        pushCommand(cmd);
+    }
+
+    function deleteBlockInternal(blockId, recursive = true) {
         const block = state.blocks.find(b => b.id === blockId);
         if (!block) return;
 
         // Recursively delete all children first
-        if (block.childBlockIds && block.childBlockIds.length > 0) {
-            // Copy array since we'll be modifying it
+        if (recursive && block.childBlockIds && block.childBlockIds.length > 0) {
             const childIds = [...block.childBlockIds];
             for (const childId of childIds) {
-                deleteBlock(childId);
+                deleteBlockInternal(childId, true);
             }
         }
 
@@ -1274,7 +1606,11 @@
         if (state.selectedBlockId === blockId) {
             selectBlock(null);
         }
-        scheduleAutoSave();
+    }
+
+    function deleteBlock(blockId) {
+        const cmd = new DeleteBlockCommand(blockId);
+        executeCommand(cmd);
     }
 
     // ============================================
@@ -1335,7 +1671,7 @@
         return { sideA, sideB };
     }
 
-    function createConnection(fromBlockId, toBlockId) {
+    function createConnectionInternal(fromBlockId, toBlockId) {
         if (fromBlockId === toBlockId) return null;
 
         const exists = state.connections.some(
@@ -1361,7 +1697,16 @@
         };
         state.connections.push(conn);
         renderConnection(conn);
-        scheduleAutoSave();
+        return conn;
+    }
+
+    function createConnection(fromBlockId, toBlockId) {
+        const conn = createConnectionInternal(fromBlockId, toBlockId);
+        if (conn) {
+            const cmd = new CreateConnectionCommand(fromBlockId, toBlockId, conn);
+            pushCommand(cmd);
+            scheduleAutoSave();
+        }
         return conn;
     }
 
@@ -1418,7 +1763,7 @@
         hideProperties();
     }
 
-    function deleteConnection(connId) {
+    function deleteConnectionInternal(connId) {
         state.connections = state.connections.filter(c => c.id !== connId);
         const el = document.getElementById(connId);
         if (el) el.remove();
@@ -1426,7 +1771,11 @@
         if (state.selectedConnectionId === connId) {
             state.selectedConnectionId = null;
         }
-        scheduleAutoSave();
+    }
+
+    function deleteConnection(connId) {
+        const cmd = new DeleteConnectionCommand(connId);
+        executeCommand(cmd);
     }
 
     // ============================================
@@ -1611,6 +1960,18 @@
                 } else if (state.selectedConnectionId) {
                     deleteConnection(state.selectedConnectionId);
                 }
+            });
+        }
+
+        if (undoBtn) {
+            undoBtn.addEventListener('click', () => {
+                undo();
+            });
+        }
+
+        if (redoBtn) {
+            redoBtn.addEventListener('click', () => {
+                redo();
             });
         }
 
@@ -1799,6 +2160,8 @@
                     width: block.width,
                     height: block.height
                 };
+                // Capture start size for undo command
+                state.resizeStartSize = { width: block.width, height: block.height };
                 selectBlock(blockId);
             }
             e.preventDefault();
@@ -1819,6 +2182,8 @@
                     x: point.x - globalPos.x,
                     y: point.y - globalPos.y
                 };
+                // Capture start position for undo command
+                state.dragStartPos = { x: block.x, y: block.y };
             }
             e.preventDefault();
             return;
@@ -1857,7 +2222,8 @@
                 const minSize = getMinSizeForChildren(block);
                 const newWidth = Math.max(minSize.minWidth, state.resizeStart.width + (point.x - state.resizeStart.x));
                 const newHeight = Math.max(minSize.minHeight, state.resizeStart.height + (point.y - state.resizeStart.y));
-                updateBlock(state.selectedBlockId, { width: newWidth, height: newHeight }, false);
+                // Use internal version - command created on mouseup
+                updateBlockInternal(state.selectedBlockId, { width: newWidth, height: newHeight }, false);
             }
             return;
         }
@@ -1875,7 +2241,8 @@
                     newX = point.x - state.dragOffset.x;
                     newY = point.y - state.dragOffset.y;
                 }
-                updateBlock(state.selectedBlockId, { x: newX, y: newY }, false);
+                // Use internal version - command created on mouseup
+                updateBlockInternal(state.selectedBlockId, { x: newX, y: newY }, false);
 
                 // Handle parenting detection
                 handleParentingDuringDrag(block, point);
@@ -1911,6 +2278,17 @@
             else if (state.isParentingPreview && state.parentingTarget) {
                 performParenting(state.selectedBlockId, state.parentingTarget);
             }
+            // Create move command if position changed (and no parenting/unparenting happened)
+            else if (block && state.dragStartPos) {
+                if (block.x !== state.dragStartPos.x || block.y !== state.dragStartPos.y) {
+                    const cmd = new MoveBlockCommand(
+                        block.id,
+                        state.dragStartPos.x, state.dragStartPos.y,
+                        block.x, block.y
+                    );
+                    pushCommand(cmd);
+                }
+            }
 
             // Clear all preview states
             clearParentingPreview();
@@ -1918,8 +2296,22 @@
                 clearUnparentingPreview(block);
             }
 
+            state.dragStartPos = null;
             scheduleAutoSave();
-        } else if (state.isResizing) {
+        } else if (state.isResizing && state.selectedBlockId) {
+            const block = state.blocks.find(b => b.id === state.selectedBlockId);
+            // Create resize command if size changed
+            if (block && state.resizeStartSize) {
+                if (block.width !== state.resizeStartSize.width || block.height !== state.resizeStartSize.height) {
+                    const cmd = new ResizeBlockCommand(
+                        block.id,
+                        state.resizeStartSize.width, state.resizeStartSize.height,
+                        block.width, block.height
+                    );
+                    pushCommand(cmd);
+                }
+            }
+            state.resizeStartSize = null;
             scheduleAutoSave();
         }
 
@@ -1974,6 +2366,22 @@
     }
 
     function handleKeyDown(e) {
+        // Undo: Ctrl+Z (or Cmd+Z on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            e.preventDefault();
+            undo();
+            return;
+        }
+
+        // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd+Y / Cmd+Shift+Z on Mac)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey) || (e.key === 'Z' && e.shiftKey))) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            e.preventDefault();
+            redo();
+            return;
+        }
+
         if (e.key === 'Delete' || e.key === 'Backspace') {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
@@ -2078,6 +2486,8 @@
             findPotentialParent,
             performParenting,
             performUnparenting,
+            performParentingInternal,
+            performUnparentingInternal,
             autoResizeParent,
             getMinSizeForChildren,
             handleParentingDuringDrag,
@@ -2085,6 +2495,33 @@
             clearParentingTimer,
             clearUnparentingPreview,
             NESTING_CONSTANTS: NESTING_CONSTANTS,
+
+            // Undo/Redo functions
+            undo,
+            redo,
+            executeCommand,
+            pushCommand,
+            clearUndoRedo,
+            updateUndoRedoButtons,
+            deepClone,
+            restoreBlock,
+            restoreConnection,
+            createBlockInternal,
+            deleteBlockInternal,
+            updateBlockInternal,
+            createConnectionInternal,
+            deleteConnectionInternal,
+
+            // Command classes
+            CreateBlockCommand,
+            DeleteBlockCommand,
+            UpdateBlockCommand,
+            MoveBlockCommand,
+            ResizeBlockCommand,
+            CreateConnectionCommand,
+            DeleteConnectionCommand,
+            ParentBlockCommand,
+            UnparentBlockCommand,
 
             // Persistence
             saveAllDiagrams,
@@ -2116,7 +2553,10 @@
                 isDirty: state.isDirty,
                 isParentingPreview: state.isParentingPreview,
                 parentingTarget: state.parentingTarget,
-                isUnparentingPreview: state.isUnparentingPreview
+                isUnparentingPreview: state.isUnparentingPreview,
+                undoStack: [...state.undoStack],
+                redoStack: [...state.redoStack],
+                maxUndoDepth: state.maxUndoDepth
             }),
             resetState: () => {
                 state.diagrams = [];
