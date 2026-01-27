@@ -104,6 +104,24 @@
                     </div>
                 </label>
             </div>
+            <div id="connection-properties" class="hidden">
+                <label>
+                    Line Style:
+                    <select id="connection-line-style">
+                        <option value="solid">Solid</option>
+                        <option value="dashed">Dashed</option>
+                        <option value="dotted">Dotted</option>
+                    </select>
+                </label>
+                <label>
+                    Color:
+                    <input type="color" id="connection-color" value="#000000">
+                </label>
+                <label>
+                    Z-Order:
+                    <input type="number" id="connection-zindex" min="-999" max="999">
+                </label>
+            </div>
         </aside>
 
         <div id="proxy-modal" class="modal hidden">

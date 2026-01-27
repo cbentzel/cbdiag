@@ -241,6 +241,20 @@
         }
     }
 
+    class UpdateConnectionCommand {
+        constructor(connId, updates, previousValues) {
+            this.connId = connId;
+            this.updates = deepClone(updates);
+            this.previousValues = deepClone(previousValues);
+        }
+        execute() {
+            updateConnectionInternal(this.connId, this.updates, false);
+        }
+        undo() {
+            updateConnectionInternal(this.connId, this.previousValues, false);
+        }
+    }
+
     class ParentBlockCommand {
         constructor(childId, newParentId, oldParentId, oldPosition, newPosition) {
             this.childId = childId;
@@ -365,6 +379,7 @@
     const propertiesTitle = document.getElementById('properties-title');
     const blockPropertiesDiv = document.getElementById('block-properties');
     const proxyPropertiesDiv = document.getElementById('proxy-properties');
+    const connectionPropertiesDiv = document.getElementById('connection-properties');
     const diagramList = document.getElementById('diagram-list');
     const diagramNameInput = document.getElementById('diagram-name');
     const saveStatus = document.getElementById('save-status');
@@ -389,6 +404,9 @@
     const bringToFrontBtn = document.getElementById('bring-to-front');
     const sendToBackBtn = document.getElementById('send-to-back');
     const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
+    const connectionLineStyle = document.getElementById('connection-line-style');
+    const connectionColor = document.getElementById('connection-color');
+    const connectionZIndex = document.getElementById('connection-zindex');
 
     // Modal elements
     const proxyModal = document.getElementById('proxy-modal');
@@ -1734,7 +1752,10 @@
             from: fromBlockId, // Alias for compatibility
             to: toBlockId, // Alias for compatibility
             fromSide,
-            toSide
+            toSide,
+            lineStyle: 'solid',
+            color: '#000000',
+            zIndex: null // Will be calculated from connected blocks if not set
         };
         state.connections.push(conn);
         renderConnection(conn);
@@ -1777,9 +1798,23 @@
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
 
-        // Set z-index to max of the two connected blocks
+        // Set z-index: use conn.zIndex if set, otherwise max of the two connected blocks
         const maxZIndex = Math.max(fromBlock.zIndex || 0, toBlock.zIndex || 0);
-        path.style.zIndex = maxZIndex;
+        path.style.zIndex = conn.zIndex !== null ? conn.zIndex : maxZIndex;
+
+        // Apply line style
+        const lineStyle = conn.lineStyle || 'solid';
+        if (lineStyle === 'dashed') {
+            path.setAttribute('stroke-dasharray', '10,5');
+        } else if (lineStyle === 'dotted') {
+            path.setAttribute('stroke-dasharray', '2,5');
+        } else {
+            path.setAttribute('stroke-dasharray', 'none');
+        }
+
+        // Apply color
+        const color = conn.color || '#000000';
+        path.setAttribute('stroke', color);
 
         // Get connectionsLayer dynamically to support test environment where DOM is recreated
         const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
@@ -1804,8 +1839,44 @@
         if (connId) {
             const el = document.getElementById(connId);
             if (el) el.classList.add('selected');
+            const conn = state.connections.find(c => c.id === connId);
+            if (conn) {
+                showConnectionProperties(conn);
+            }
+        } else {
+            hideProperties();
         }
-        hideProperties();
+    }
+
+    function updateConnectionInternal(connId, updates, triggerSave = true) {
+        const conn = state.connections.find(c => c.id === connId);
+        if (!conn) return;
+
+        Object.assign(conn, updates);
+        renderConnection(conn);
+
+        if (state.selectedConnectionId === connId) {
+            showConnectionProperties(conn);
+        }
+
+        if (triggerSave) scheduleAutoSave();
+    }
+
+    function updateConnection(connId, updates, triggerSave = true) {
+        const conn = state.connections.find(c => c.id === connId);
+        if (!conn) return;
+
+        // Capture previous values for undo
+        const previousValues = {};
+        for (const key of Object.keys(updates)) {
+            previousValues[key] = conn[key];
+        }
+
+        updateConnectionInternal(connId, updates, triggerSave);
+
+        // Create command for undo
+        const cmd = new UpdateConnectionCommand(connId, updates, previousValues);
+        pushCommand(cmd);
     }
 
     function deleteConnectionInternal(connId) {
@@ -1834,6 +1905,11 @@
         if (propertiesTitle) {
             propertiesTitle.textContent = isProxy ? 'Proxy Properties' : 'Block Properties';
         }
+
+        // Hide connection properties, show common properties
+        if (connectionPropertiesDiv) connectionPropertiesDiv.classList.add('hidden');
+        const commonPropertiesDiv = document.getElementById('common-properties');
+        if (commonPropertiesDiv) commonPropertiesDiv.classList.remove('hidden');
 
         if (isProxy) {
             if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
@@ -1875,6 +1951,36 @@
         if (propertiesPanel) {
             propertiesPanel.classList.add('hidden');
         }
+    }
+
+    function showConnectionProperties(conn) {
+        if (!propertiesPanel) return;
+
+        if (propertiesTitle) {
+            propertiesTitle.textContent = 'Connection Properties';
+        }
+
+        // Hide block and proxy properties, show connection properties
+        if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
+        if (proxyPropertiesDiv) proxyPropertiesDiv.classList.add('hidden');
+        if (connectionPropertiesDiv) connectionPropertiesDiv.classList.remove('hidden');
+        const commonPropertiesDiv = document.getElementById('common-properties');
+        if (commonPropertiesDiv) commonPropertiesDiv.classList.add('hidden');
+        const parentInfoDiv = document.getElementById('parent-info');
+        if (parentInfoDiv) parentInfoDiv.classList.add('hidden');
+
+        // Populate connection properties
+        if (connectionLineStyle) connectionLineStyle.value = conn.lineStyle || 'solid';
+        if (connectionColor) connectionColor.value = conn.color || '#000000';
+
+        // Calculate display z-index (actual or computed from blocks)
+        const fromBlock = state.blocks.find(b => b.id === conn.fromBlockId);
+        const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
+        const maxZIndex = Math.max(fromBlock?.zIndex || 0, toBlock?.zIndex || 0);
+        const displayZIndex = conn.zIndex !== null ? conn.zIndex : maxZIndex;
+        if (connectionZIndex) connectionZIndex.value = displayZIndex;
+
+        propertiesPanel.classList.remove('hidden');
     }
 
     function populateProxyDiagramSelect(selectEl, selectedId = null) {
@@ -2141,6 +2247,31 @@
                         performUnparenting(state.selectedBlockId);
                         showProperties(block);
                     }
+                }
+            });
+        }
+
+        // Connection properties
+        if (connectionLineStyle) {
+            connectionLineStyle.addEventListener('change', (e) => {
+                if (state.selectedConnectionId) {
+                    updateConnection(state.selectedConnectionId, { lineStyle: e.target.value });
+                }
+            });
+        }
+
+        if (connectionColor) {
+            connectionColor.addEventListener('input', (e) => {
+                if (state.selectedConnectionId) {
+                    updateConnection(state.selectedConnectionId, { color: e.target.value });
+                }
+            });
+        }
+
+        if (connectionZIndex) {
+            connectionZIndex.addEventListener('change', (e) => {
+                if (state.selectedConnectionId) {
+                    updateConnection(state.selectedConnectionId, { zIndex: parseInt(e.target.value) || 0 });
                 }
             });
         }
