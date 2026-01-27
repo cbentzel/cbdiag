@@ -406,7 +406,6 @@
     const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
     const connectionLineStyle = document.getElementById('connection-line-style');
     const connectionColor = document.getElementById('connection-color');
-    const connectionZIndex = document.getElementById('connection-zindex');
 
     // Modal elements
     const proxyModal = document.getElementById('proxy-modal');
@@ -1911,6 +1910,10 @@
         const commonPropertiesDiv = document.getElementById('common-properties');
         if (commonPropertiesDiv) commonPropertiesDiv.classList.remove('hidden');
 
+        // Show z-order properties
+        const zOrderPropertiesDiv = document.getElementById('z-order-properties');
+        if (zOrderPropertiesDiv) zOrderPropertiesDiv.classList.remove('hidden');
+
         if (isProxy) {
             if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
             if (proxyPropertiesDiv) proxyPropertiesDiv.classList.remove('hidden');
@@ -1969,6 +1972,10 @@
         const parentInfoDiv = document.getElementById('parent-info');
         if (parentInfoDiv) parentInfoDiv.classList.add('hidden');
 
+        // Show z-order properties
+        const zOrderPropertiesDiv = document.getElementById('z-order-properties');
+        if (zOrderPropertiesDiv) zOrderPropertiesDiv.classList.remove('hidden');
+
         // Populate connection properties
         if (connectionLineStyle) connectionLineStyle.value = conn.lineStyle || 'solid';
         if (connectionColor) connectionColor.value = conn.color || '#000000';
@@ -1978,7 +1985,7 @@
         const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
         const maxZIndex = Math.max(fromBlock?.zIndex || 0, toBlock?.zIndex || 0);
         const displayZIndex = conn.zIndex !== null ? conn.zIndex : maxZIndex;
-        if (connectionZIndex) connectionZIndex.value = displayZIndex;
+        if (blockZIndex) blockZIndex.value = displayZIndex;
 
         propertiesPanel.classList.remove('hidden');
     }
@@ -2217,6 +2224,8 @@
             blockZIndex.addEventListener('change', (e) => {
                 if (state.selectedBlockId) {
                     updateBlock(state.selectedBlockId, { zIndex: parseInt(e.target.value) || 0 });
+                } else if (state.selectedConnectionId) {
+                    updateConnection(state.selectedConnectionId, { zIndex: parseInt(e.target.value) || 0 });
                 }
             });
         }
@@ -2225,6 +2234,9 @@
             bringToFrontBtn.addEventListener('click', () => {
                 if (state.selectedBlockId) {
                     bringToFront(state.selectedBlockId);
+                } else if (state.selectedConnectionId) {
+                    const maxZ = getMaxZIndex();
+                    updateConnection(state.selectedConnectionId, { zIndex: maxZ + 1 });
                 }
             });
         }
@@ -2233,6 +2245,9 @@
             sendToBackBtn.addEventListener('click', () => {
                 if (state.selectedBlockId) {
                     sendToBack(state.selectedBlockId);
+                } else if (state.selectedConnectionId) {
+                    const minZ = getMinZIndex();
+                    updateConnection(state.selectedConnectionId, { zIndex: minZ - 1 });
                 }
             });
         }
@@ -2264,14 +2279,6 @@
             connectionColor.addEventListener('input', (e) => {
                 if (state.selectedConnectionId) {
                     updateConnection(state.selectedConnectionId, { color: e.target.value });
-                }
-            });
-        }
-
-        if (connectionZIndex) {
-            connectionZIndex.addEventListener('change', (e) => {
-                if (state.selectedConnectionId) {
-                    updateConnection(state.selectedConnectionId, { zIndex: parseInt(e.target.value) || 0 });
                 }
             });
         }
