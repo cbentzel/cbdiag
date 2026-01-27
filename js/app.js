@@ -1777,6 +1777,10 @@
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
 
+        // Set z-index to max of the two connected blocks
+        const maxZIndex = Math.max(fromBlock.zIndex || 0, toBlock.zIndex || 0);
+        path.style.zIndex = maxZIndex;
+
         // Get connectionsLayer dynamically to support test environment where DOM is recreated
         const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
         if (currentConnectionsLayer) {
