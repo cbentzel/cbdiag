@@ -1753,7 +1753,7 @@
             fromSide,
             toSide,
             lineStyle: 'solid',
-            color: '#000000',
+            color: null, // null means use CSS default
             zIndex: null // Will be calculated from connected blocks if not set
         };
         state.connections.push(conn);
@@ -1811,9 +1811,13 @@
             path.setAttribute('stroke-dasharray', 'none');
         }
 
-        // Apply color
-        const color = conn.color || '#000000';
-        path.setAttribute('stroke', color);
+        // Apply color - only set if not default to allow CSS to handle hover/selection
+        const color = conn.color;
+        if (color && color !== '#000000' && color !== '#666666' && color !== '#666') {
+            path.setAttribute('stroke', color);
+        } else {
+            path.removeAttribute('stroke');
+        }
 
         // Get connectionsLayer dynamically to support test environment where DOM is recreated
         const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
@@ -1978,7 +1982,7 @@
 
         // Populate connection properties
         if (connectionLineStyle) connectionLineStyle.value = conn.lineStyle || 'solid';
-        if (connectionColor) connectionColor.value = conn.color || '#000000';
+        if (connectionColor) connectionColor.value = conn.color || '#666666';
 
         // Calculate display z-index (actual or computed from blocks)
         const fromBlock = state.blocks.find(b => b.id === conn.fromBlockId);
