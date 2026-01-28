@@ -56,7 +56,10 @@
         redoStack: [],
         maxUndoDepth: 50,
         dragStartPos: null,
-        resizeStartSize: null
+        resizeStartSize: null,
+
+        // Transparency during drag state (for making higher z-index blocks transparent)
+        dragTransparentBlocks: [] // Array of { blockId, originalOpacity }
     };
 
     // ============================================
@@ -989,6 +992,79 @@
             right: globalPos.x + block.width,
             bottom: globalPos.y + block.height
         };
+    }
+
+    // Check if two blocks overlap in global coordinates
+    function blocksOverlap(block1, block2) {
+        const bounds1 = getGlobalBounds(block1);
+        const bounds2 = getGlobalBounds(block2);
+
+        return !(bounds1.right < bounds2.x ||
+                 bounds1.x > bounds2.right ||
+                 bounds1.bottom < bounds2.y ||
+                 bounds1.y > bounds2.bottom);
+    }
+
+    // Make higher z-index blocks transparent when dragging a lower z-index block
+    function updateTransparencyDuringDrag(draggingBlock) {
+        if (!draggingBlock) return;
+
+        const draggingZIndex = draggingBlock.zIndex || 0;
+        const newTransparentBlocks = [];
+
+        // Find all blocks with HIGHER z-index that overlap with dragging block
+        state.blocks.forEach(block => {
+            if (block.id === draggingBlock.id) return;
+
+            const blockZIndex = block.zIndex || 0;
+            if (blockZIndex > draggingZIndex && blocksOverlap(draggingBlock, block)) {
+                // Check if we haven't already cached this block
+                const existing = state.dragTransparentBlocks.find(item => item.blockId === block.id);
+                if (!existing) {
+                    newTransparentBlocks.push({
+                        blockId: block.id,
+                        originalOpacity: block.opacity
+                    });
+                    // Set to fully transparent (opacity 1 means fully transparent in our system)
+                    updateBlockInternal(block.id, { opacity: 1 }, false);
+                }
+            }
+        });
+
+        // Restore blocks that are no longer overlapping
+        state.dragTransparentBlocks.forEach(cached => {
+            const block = state.blocks.find(b => b.id === cached.blockId);
+            if (block) {
+                const blockZIndex = block.zIndex || 0;
+                const stillOverlapping = blockZIndex > draggingZIndex && blocksOverlap(draggingBlock, block);
+
+                if (!stillOverlapping) {
+                    // Restore original opacity
+                    updateBlockInternal(cached.blockId, { opacity: cached.originalOpacity }, false);
+                }
+            }
+        });
+
+        // Update cache: keep only still-overlapping blocks
+        state.dragTransparentBlocks = state.dragTransparentBlocks.filter(cached => {
+            const block = state.blocks.find(b => b.id === cached.blockId);
+            if (!block) return false;
+            const blockZIndex = block.zIndex || 0;
+            return blockZIndex > draggingZIndex && blocksOverlap(draggingBlock, block);
+        });
+
+        // Add new transparent blocks to cache
+        newTransparentBlocks.forEach(item => {
+            state.dragTransparentBlocks.push(item);
+        });
+    }
+
+    // Restore all blocks to their original opacity after drag
+    function restoreTransparencyAfterDrag() {
+        state.dragTransparentBlocks.forEach(cached => {
+            updateBlockInternal(cached.blockId, { opacity: cached.originalOpacity }, false);
+        });
+        state.dragTransparentBlocks = [];
     }
 
     // Get all ancestors (parent, grandparent, etc.)
@@ -2531,6 +2607,9 @@
                 // Use internal version - command created on mouseup
                 updateBlockInternal(state.selectedBlockId, { x: newX, y: newY }, false);
 
+                // Make higher z-index overlapping blocks transparent
+                updateTransparencyDuringDrag(block);
+
                 // Handle parenting detection
                 handleParentingDuringDrag(block, point);
             }
@@ -2582,6 +2661,9 @@
             if (block) {
                 clearUnparentingPreview(block);
             }
+
+            // Restore transparency of blocks that were made transparent during drag
+            restoreTransparencyAfterDrag();
 
             state.dragStartPos = null;
             scheduleAutoSave();
