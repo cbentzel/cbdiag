@@ -474,7 +474,10 @@ body {
 }
 
 #block-properties.hidden,
-#proxy-properties.hidden {
+#proxy-properties.hidden,
+#connection-properties.hidden,
+#common-properties.hidden,
+#z-order-properties.hidden {
     display: none;
 }
 
