@@ -1596,7 +1596,7 @@
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', gx + block.width / 2);
-        text.setAttribute('y', gy + block.height / 2 + (isProxy ? 0 : 5));
+        text.setAttribute('y', gy + 22); // Position at upper center
         text.setAttribute('text-anchor', 'middle');
         text.textContent = labelText;
 
@@ -1608,7 +1608,7 @@
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             icon.setAttribute('class', 'proxy-icon');
             icon.setAttribute('x', gx + block.width / 2);
-            icon.setAttribute('y', gy + block.height / 2 + 18);
+            icon.setAttribute('y', gy + 38); // Position below the label
             icon.setAttribute('text-anchor', 'middle');
             icon.setAttribute('font-size', '10');
             icon.setAttribute('fill', 'rgba(255,255,255,0.7)');
