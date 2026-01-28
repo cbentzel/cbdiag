@@ -285,6 +285,15 @@ body {
     stroke-width: 3;
 }
 
+/* Invisible wider path for easier connection clicking */
+.connection-hitbox {
+    stroke: transparent;
+    stroke-width: 16;
+    fill: none;
+    cursor: pointer;
+    pointer-events: stroke;
+}
+
 .connection-temp {
     stroke: #999;
     stroke-width: 2;

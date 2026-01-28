@@ -73,11 +73,10 @@ export function setupTestEnvironment() {
 
     // Get DOM elements
     const canvas = document.getElementById('canvas');
-    const blocksLayer = document.getElementById('blocks-layer');
-    const connectionsLayer = document.getElementById('connections-layer');
+    const canvasContent = document.getElementById('canvas-content');
 
     // Mock canvas.getBoundingClientRect()
     mockCanvas();
 
-    return { canvas, blocksLayer, connectionsLayer, state };
+    return { canvas, canvasContent, state };
 }

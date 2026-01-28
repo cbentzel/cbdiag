@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 describe('Mouse Interaction Handlers', () => {
-    let canvas, blocksLayer, connectionsLayer;
+    let canvas, canvasContent;
 
     beforeAll(async () => {
         // Load app.js to expose __cbdiag__
@@ -21,8 +21,7 @@ describe('Mouse Interaction Handlers', () => {
 
         // Set up DOM elements
         canvas = document.getElementById('canvas');
-        blocksLayer = document.getElementById('blocks-layer');
-        connectionsLayer = document.getElementById('connections-layer');
+        canvasContent = document.getElementById('canvas-content');
 
         // Mock canvas.getBoundingClientRect()
         canvas.getBoundingClientRect = vi.fn(() => ({
@@ -88,18 +87,20 @@ describe('Mouse Interaction Handlers', () => {
             const conn = window.__cbdiag__.createConnection(block1.id, block2.id);
             window.__cbdiag__.renderCanvas();
 
-            const connElement = document.querySelector(`[data-conn-id="${conn.id}"]`);
+            const connHitbox = document.querySelector(`[data-conn-id="${conn.id}"]`);
             const mouseEvent = new MouseEvent('mousedown', {
                 bubbles: true,
                 clientX: 200,
                 clientY: 100
             });
 
-            // Dispatch on the element so it bubbles to canvas
-            connElement.dispatchEvent(mouseEvent);
+            // Dispatch on the hitbox so it bubbles to canvas
+            connHitbox.dispatchEvent(mouseEvent);
 
             const state = window.__cbdiag__.getState();
             expect(state.selectedConnectionId).toBe(conn.id);
+            // Check the actual path element (not hitbox) for selected class
+            const connElement = document.getElementById(conn.id);
             expect(connElement.classList.contains('selected')).toBe(true);
         });
 
@@ -193,7 +194,7 @@ describe('Mouse Interaction Handlers', () => {
             });
             canvas.dispatchEvent(mouseEvent);
 
-            const tempLine = connectionsLayer.querySelector('.connection-temp');
+            const tempLine = canvasContent.querySelector('.connection-temp');
             expect(tempLine).toBeDefined();
             expect(tempLine.getAttribute('d')).toContain('M');
             expect(tempLine.getAttribute('d')).toContain('L');
@@ -744,12 +745,12 @@ describe('Mouse Interaction Handlers', () => {
                 });
                 canvas.dispatchEvent(moveEvent);
 
-                const connectionsLayer = document.getElementById('connections-layer');
-                expect(connectionsLayer.querySelector('.connection-temp')).toBeDefined();
+                const canvasContent = document.getElementById('canvas-content');
+                expect(canvasContent.querySelector('.connection-temp')).toBeDefined();
 
                 window.__cbdiag__.exitConnectionMode();
 
-                expect(connectionsLayer.querySelector('.connection-temp')).toBeNull();
+                expect(canvasContent.querySelector('.connection-temp')).toBeNull();
             });
 
             it('should remove CSS class from canvas', () => {
@@ -783,8 +784,8 @@ describe('Mouse Interaction Handlers', () => {
                 });
                 canvas.dispatchEvent(moveEvent);
 
-                const connectionsLayer = document.getElementById('connections-layer');
-                const tempLine = connectionsLayer.querySelector('.connection-temp');
+                const canvasContent = document.getElementById('canvas-content');
+                const tempLine = canvasContent.querySelector('.connection-temp');
                 expect(tempLine).toBeDefined();
                 expect(tempLine.tagName).toBe('path');
             });
@@ -811,8 +812,8 @@ describe('Mouse Interaction Handlers', () => {
                 });
                 canvas.dispatchEvent(moveEvent);
 
-                const connectionsLayer = document.getElementById('connections-layer');
-                let tempLine = connectionsLayer.querySelector('.connection-temp');
+                const canvasContent = document.getElementById('canvas-content');
+                let tempLine = canvasContent.querySelector('.connection-temp');
                 expect(tempLine).not.toBeNull();
                 const path1 = tempLine.getAttribute('d');
 
@@ -849,8 +850,8 @@ describe('Mouse Interaction Handlers', () => {
                 });
                 canvas.dispatchEvent(moveEvent);
 
-                const connectionsLayer = document.getElementById('connections-layer');
-                const tempLine = connectionsLayer.querySelector('.connection-temp');
+                const canvasContent = document.getElementById('canvas-content');
+                const tempLine = canvasContent.querySelector('.connection-temp');
                 const path = tempLine.getAttribute('d');
 
                 // Path should start with M (move to anchor point)

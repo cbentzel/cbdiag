@@ -373,8 +373,7 @@
     // DOM Elements
     // ============================================
     const canvas = document.getElementById('canvas');
-    const blocksLayer = document.getElementById('blocks-layer');
-    const connectionsLayer = document.getElementById('connections-layer');
+    const canvasContent = document.getElementById('canvas-content');
     const propertiesPanel = document.getElementById('properties-panel');
     const propertiesTitle = document.getElementById('properties-title');
     const blockPropertiesDiv = document.getElementById('block-properties');
@@ -678,24 +677,55 @@
     }
 
     function renderCanvas() {
-        // Get layers dynamically to support test environment where DOM is recreated
-        const currentBlocksLayer = blocksLayer || document.getElementById('blocks-layer');
-        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
-        if (!currentBlocksLayer || !currentConnectionsLayer) return;
+        const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
+        if (!currentCanvasContent) return;
 
-        currentBlocksLayer.innerHTML = '';
-        currentConnectionsLayer.innerHTML = '';
+        currentCanvasContent.innerHTML = '';
 
-        // Sort blocks by zIndex before rendering (lower values first)
-        const sortedBlocks = [...state.blocks].sort((a, b) => {
-            const aZ = a.zIndex || 0;
-            const bZ = b.zIndex || 0;
-            // Use stable sort: if zIndex is equal, preserve array order
-            return aZ - bZ || state.blocks.indexOf(a) - state.blocks.indexOf(b);
+        // Create combined array of blocks and connections with z-index
+        const renderableItems = [];
+
+        // Add blocks
+        state.blocks.forEach(block => {
+            renderableItems.push({
+                type: 'block',
+                zIndex: block.zIndex || 0,
+                data: block,
+                arrayIndex: state.blocks.indexOf(block)
+            });
         });
 
-        sortedBlocks.forEach(renderBlock);
-        state.connections.forEach(renderConnection);
+        // Add connections with computed z-index
+        state.connections.forEach(conn => {
+            const fromBlock = state.blocks.find(b => b.id === conn.fromBlockId);
+            const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
+            const maxZIndex = Math.max(fromBlock?.zIndex || 0, toBlock?.zIndex || 0);
+            const effectiveZIndex = conn.zIndex !== null ? conn.zIndex : maxZIndex;
+
+            renderableItems.push({
+                type: 'connection',
+                zIndex: effectiveZIndex,
+                data: conn,
+                arrayIndex: state.connections.indexOf(conn)
+            });
+        });
+
+        // Sort by z-index, then by type (connections before blocks at same z), then by array index
+        renderableItems.sort((a, b) => {
+            if (a.zIndex !== b.zIndex) return a.zIndex - b.zIndex;
+            // At same z-index, connections render before blocks (to appear behind)
+            if (a.type !== b.type) return a.type === 'connection' ? -1 : 1;
+            return a.arrayIndex - b.arrayIndex;
+        });
+
+        // Render in sorted order
+        renderableItems.forEach(item => {
+            if (item.type === 'block') {
+                renderBlock(item.data);
+            } else {
+                renderConnection(item.data);
+            }
+        });
     }
 
     // ============================================
@@ -1419,9 +1449,9 @@
     }
 
     function renderBlock(block) {
-        // Get blocksLayer dynamically to support test environment where DOM is recreated
-        const currentBlocksLayer = blocksLayer || document.getElementById('blocks-layer');
-        if (!currentBlocksLayer) return;
+        // Get canvasContent dynamically to support test environment where DOM is recreated
+        const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
+        if (!currentCanvasContent) return;
 
         const existing = document.getElementById(block.id);
         if (existing) existing.remove();
@@ -1509,27 +1539,9 @@
             g.appendChild(resizeHandle);
         }
 
-        // Insert block at correct position based on z-index
-        const currentZ = block.zIndex || 0;
-        const existingBlocks = Array.from(currentBlocksLayer.children);
-        let insertBefore = null;
-
-        for (const existingG of existingBlocks) {
-            const existingBlockId = existingG.getAttribute('data-block-id');
-            const existingBlock = state.blocks.find(b => b.id === existingBlockId);
-            if (existingBlock) {
-                const existingZ = existingBlock.zIndex || 0;
-                if (existingZ > currentZ) {
-                    insertBefore = existingG;
-                    break;
-                }
-            }
-        }
-
-        if (insertBefore) {
-            currentBlocksLayer.insertBefore(g, insertBefore);
-        } else {
-            currentBlocksLayer.appendChild(g);
+        // Append block (renderCanvas handles z-order via unified layer)
+        if (currentCanvasContent) {
+            currentCanvasContent.appendChild(g);
         }
     }
 
@@ -1774,6 +1786,8 @@
     function renderConnection(conn) {
         const existing = document.getElementById(conn.id);
         if (existing) existing.remove();
+        const existingHitbox = document.getElementById(`${conn.id}-hitbox`);
+        if (existingHitbox) existingHitbox.remove();
 
         const fromBlock = state.blocks.find(b => b.id === conn.fromBlockId);
         const toBlock = state.blocks.find(b => b.id === conn.toBlockId);
@@ -1790,19 +1804,38 @@
         const fromPoint = getAnchorPoint(fromBlock, fromSide);
         const toPoint = getAnchorPoint(toBlock, toSide);
 
+        // Create path data for reuse
+        const pathData = `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`;
+
+        // Create invisible hitbox for easier clicking
+        const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hitbox.setAttribute('id', `${conn.id}-hitbox`);
+        hitbox.setAttribute('class', 'connection-hitbox');
+        hitbox.setAttribute('d', pathData);
+        hitbox.setAttribute('data-conn-id', conn.id);
+
+        // Apply line style to hitbox for consistent hit area
+        const lineStyle = conn.lineStyle || 'solid';
+        if (lineStyle === 'dashed') {
+            hitbox.setAttribute('stroke-dasharray', '10,5');
+        } else if (lineStyle === 'dotted') {
+            hitbox.setAttribute('stroke-dasharray', '2,5');
+        }
+
+        // Create visible path
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('id', conn.id);
         path.setAttribute('class', 'connection');
-        path.setAttribute('d', `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`);
+        path.setAttribute('d', pathData);
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.setAttribute('data-conn-id', conn.id);
+        path.style.pointerEvents = 'none';  // Hitbox handles clicks
 
         // Set z-index: use conn.zIndex if set, otherwise max of the two connected blocks
         const maxZIndex = Math.max(fromBlock.zIndex || 0, toBlock.zIndex || 0);
         path.style.zIndex = conn.zIndex !== null ? conn.zIndex : maxZIndex;
 
-        // Apply line style
-        const lineStyle = conn.lineStyle || 'solid';
+        // Apply line style to visible path
         if (lineStyle === 'dashed') {
             path.setAttribute('stroke-dasharray', '10,5');
         } else if (lineStyle === 'dotted') {
@@ -1811,18 +1844,19 @@
             path.setAttribute('stroke-dasharray', 'none');
         }
 
-        // Apply color - only set if not default to allow CSS to handle hover/selection
+        // Apply color - use inline style with !important to override CSS selection color
         const color = conn.color;
         if (color && color !== '#000000' && color !== '#666666' && color !== '#666') {
-            path.setAttribute('stroke', color);
+            path.style.setProperty('stroke', color, 'important');
         } else {
-            path.removeAttribute('stroke');
+            path.style.removeProperty('stroke');
         }
 
-        // Get connectionsLayer dynamically to support test environment where DOM is recreated
-        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
-        if (currentConnectionsLayer) {
-            currentConnectionsLayer.appendChild(path);
+        // Get canvasContent dynamically to support test environment where DOM is recreated
+        const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
+        if (currentCanvasContent) {
+            currentCanvasContent.appendChild(hitbox);  // Behind
+            currentCanvasContent.appendChild(path);    // In front
         }
     }
 
@@ -2047,14 +2081,14 @@
     }
 
     function updateTempLine(fromBlock, toPoint) {
-        // Get connectionsLayer dynamically to support test environment where DOM is recreated
-        const currentConnectionsLayer = connectionsLayer || document.getElementById('connections-layer');
-        if (!currentConnectionsLayer) return;
+        // Get canvasContent dynamically to support test environment where DOM is recreated
+        const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
+        if (!currentCanvasContent) return;
 
         if (!tempLine) {
             tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             tempLine.setAttribute('class', 'connection-temp');
-            currentConnectionsLayer.appendChild(tempLine);
+            currentCanvasContent.appendChild(tempLine);
         }
 
         const tempBlock = { x: toPoint.x, y: toPoint.y, width: 0, height: 0 };
@@ -2320,7 +2354,7 @@
         const point = screenToSvg(e.clientX, e.clientY);
         const target = e.target;
         const blockGroup = target.closest('.block');
-        const connPath = target.closest('.connection');
+        const connPath = target.closest('.connection') || target.closest('.connection-hitbox');
 
         if (state.mode === 'connecting') {
             if (blockGroup) {
@@ -2812,8 +2846,7 @@
                 state.isUnparentingPreview = false;
                 nextDiagramId = 1; // Reset diagram ID counter
                 // Safely clear DOM (elements might be null in tests)
-                if (blocksLayer) blocksLayer.innerHTML = '';
-                if (connectionsLayer) connectionsLayer.innerHTML = '';
+                if (canvasContent) canvasContent.innerHTML = '';
                 if (diagramList) diagramList.innerHTML = '';
                 if (propertiesPanel) hideProperties();
             }

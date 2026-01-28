@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { setupTestEnvironment } from '../helpers/dom-mocks.js';
 
 describe('Rendering Functions', () => {
-    let canvas, blocksLayer, connectionsLayer;
+    let canvas, canvasContent;
 
     beforeAll(async () => {
         // Load app.js to expose __cbdiag__
@@ -12,8 +12,7 @@ describe('Rendering Functions', () => {
     beforeEach(() => {
         const env = setupTestEnvironment();
         canvas = env.canvas;
-        blocksLayer = env.blocksLayer;
-        connectionsLayer = env.connectionsLayer;
+        canvasContent = env.canvasContent;
     });
 
     describe('renderBlock', () => {
@@ -171,22 +170,24 @@ describe('Rendering Functions', () => {
         it('should insert block in correct z-index order (lower z-index first)', () => {
             const block1 = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.updateBlock(block1.id, { zIndex: 2 }, false);
-            window.__cbdiag__.renderBlock(block1);
 
             const block2 = window.__cbdiag__.createBlock(200, 100);
             window.__cbdiag__.updateBlock(block2.id, { zIndex: 1 }, false);
-            window.__cbdiag__.renderBlock(block2);
 
             const block3 = window.__cbdiag__.createBlock(300, 100);
             window.__cbdiag__.updateBlock(block3.id, { zIndex: 3 }, false);
-            window.__cbdiag__.renderBlock(block3);
 
-            const children = Array.from(blocksLayer.children);
-            const ids = children.map(el => el.getAttribute('data-block-id'));
+            // Render all blocks via renderCanvas to get proper z-order
+            window.__cbdiag__.renderCanvas();
+
+            const children = Array.from(canvasContent.children);
+            const blockIds = children
+                .filter(el => el.getAttribute('data-block-id'))
+                .map(el => el.getAttribute('data-block-id'));
 
             // block2 (z:1) should be first, block1 (z:2) second, block3 (z:3) third
-            expect(ids.indexOf(block2.id)).toBeLessThan(ids.indexOf(block1.id));
-            expect(ids.indexOf(block1.id)).toBeLessThan(ids.indexOf(block3.id));
+            expect(blockIds.indexOf(block2.id)).toBeLessThan(blockIds.indexOf(block1.id));
+            expect(blockIds.indexOf(block1.id)).toBeLessThan(blockIds.indexOf(block3.id));
         });
 
         it('should replace existing block element when re-rendering', () => {
@@ -431,7 +432,7 @@ describe('Rendering Functions', () => {
 
             window.__cbdiag__.renderCanvas();
 
-            const blocks = blocksLayer.querySelectorAll('.block');
+            const blocks = canvasContent.querySelectorAll('.block');
             expect(blocks.length).toBe(3);
         });
 
@@ -445,7 +446,7 @@ describe('Rendering Functions', () => {
 
             window.__cbdiag__.renderCanvas();
 
-            const connections = connectionsLayer.querySelectorAll('.connection');
+            const connections = canvasContent.querySelectorAll('.connection');
             expect(connections.length).toBe(2);
         });
 
@@ -461,7 +462,7 @@ describe('Rendering Functions', () => {
 
             window.__cbdiag__.renderCanvas();
 
-            const children = Array.from(blocksLayer.children);
+            const children = Array.from(canvasContent.children);
             const ids = children.map(el => el.getAttribute('data-block-id'));
 
             // Should be in order: block2 (z:1), block3 (z:2), block1 (z:3)
@@ -473,12 +474,12 @@ describe('Rendering Functions', () => {
             const block1 = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.renderCanvas();
 
-            const firstCount = blocksLayer.children.length;
+            const firstCount = canvasContent.children.length;
             expect(firstCount).toBe(1);
 
             // Render again without adding blocks
             window.__cbdiag__.renderCanvas();
-            const secondCount = blocksLayer.children.length;
+            const secondCount = canvasContent.children.length;
 
             // Should still have only 1 block (not doubled)
             expect(secondCount).toBe(1);
