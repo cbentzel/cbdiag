@@ -680,6 +680,12 @@
         const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
         if (!currentCanvasContent) return;
 
+        // Preserve temp line if it exists (used during connection mode)
+        const tempLineData = tempLine ? {
+            d: tempLine.getAttribute('d'),
+            className: tempLine.getAttribute('class')
+        } : null;
+
         currentCanvasContent.innerHTML = '';
 
         // Create combined array of blocks and connections with z-index
@@ -726,6 +732,14 @@
                 renderConnection(item.data);
             }
         });
+
+        // Restore temp line if it was preserved
+        if (tempLineData) {
+            tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            tempLine.setAttribute('class', tempLineData.className);
+            tempLine.setAttribute('d', tempLineData.d);
+            currentCanvasContent.appendChild(tempLine);
+        }
     }
 
     // ============================================
@@ -1408,7 +1422,10 @@
             childBlockIds: []
         };
         state.blocks.push(block);
-        renderBlock(block);
+
+        // Re-render entire canvas to maintain proper z-ordering
+        renderCanvas();
+
         selectBlock(block.id);
         return block;
     }
@@ -1442,7 +1459,10 @@
             childBlockIds: []
         };
         state.blocks.push(block);
-        renderBlock(block);
+
+        // Re-render entire canvas to maintain proper z-ordering
+        renderCanvas();
+
         selectBlock(block.id);
         scheduleAutoSave();
         return block;
@@ -1605,18 +1625,13 @@
         }
 
         Object.assign(block, updates);
-        renderBlock(block);
+
+        // Re-render entire canvas to maintain proper z-ordering
+        // Individual renderBlock() calls would append elements, breaking z-order
+        renderCanvas();
+
         if (state.selectedBlockId === blockId) {
             selectBlock(blockId);
-        }
-
-        updateConnectionsForBlock(blockId);
-
-        // Re-render all descendants since their global positions depend on this block
-        const descendants = getDescendants(blockId);
-        for (const descendant of descendants) {
-            renderBlock(descendant);
-            updateConnectionsForBlock(descendant.id);
         }
 
         if (triggerSave) scheduleAutoSave();
@@ -1769,7 +1784,10 @@
             zIndex: null // Will be calculated from connected blocks if not set
         };
         state.connections.push(conn);
-        renderConnection(conn);
+
+        // Re-render entire canvas to maintain proper z-ordering
+        renderCanvas();
+
         return conn;
     }
 
@@ -1890,7 +1908,10 @@
         if (!conn) return;
 
         Object.assign(conn, updates);
-        renderConnection(conn);
+
+        // Re-render entire canvas to maintain proper z-ordering
+        // Individual renderConnection() calls would append elements, breaking z-order
+        renderCanvas();
 
         if (state.selectedConnectionId === connId) {
             showConnectionProperties(conn);
