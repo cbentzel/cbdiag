@@ -1025,8 +1025,9 @@
                         blockId: block.id,
                         originalOpacity: block.opacity
                     });
-                    // Set to fully transparent (opacity 1 means fully transparent in our system)
-                    updateBlockInternal(block.id, { opacity: 1 }, false);
+                    // Set to 50% transparent (0.5) or keep current if more transparent
+                    const targetOpacity = Math.max(block.opacity, 0.5);
+                    updateBlockInternal(block.id, { opacity: targetOpacity }, false);
                 }
             }
         });

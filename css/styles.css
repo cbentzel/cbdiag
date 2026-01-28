@@ -237,7 +237,7 @@ body {
 
 .block rect {
     stroke-width: 2;
-    transition: stroke 0.2s;
+    transition: stroke 0.2s, fill-opacity 0.3s ease-in-out;
 }
 
 .block.selected rect {
