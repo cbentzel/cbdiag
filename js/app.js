@@ -1115,6 +1115,31 @@
     }
 
     // ============================================
+    // Z-Index Management
+    // ============================================
+
+    // Set z-index for a block and automatically propagate the change to all descendants
+    // This ensures the entire subtree maintains correct z-order relationships
+    function setBlockZIndex(blockId, newZIndex) {
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return;
+
+        const oldZIndex = block.zIndex || 0;
+        const zDelta = newZIndex - oldZIndex;
+
+        // Set the new z-index for the block
+        block.zIndex = newZIndex;
+
+        // Propagate the delta to all descendants
+        if (zDelta !== 0) {
+            const descendants = getDescendants(blockId);
+            for (const descendant of descendants) {
+                descendant.zIndex = (descendant.zIndex || 0) + zDelta;
+            }
+        }
+    }
+
+    // ============================================
     // Nesting - Parenting Operations
     // ============================================
 
@@ -1194,18 +1219,8 @@
         child.y = localPos.y;
 
         // Inherit z-order from parent (child should render above parent)
-        const oldZIndex = child.zIndex || 0;
-        const newZIndex = parent.zIndex + 1;
-        const zDelta = newZIndex - oldZIndex;
-        child.zIndex = newZIndex;
-
-        // Propagate z-index change to all descendants
-        if (zDelta !== 0) {
-            const descendants = getDescendants(childId);
-            for (const descendant of descendants) {
-                descendant.zIndex = (descendant.zIndex || 0) + zDelta;
-            }
-        }
+        // Use centralized function that automatically propagates to descendants
+        setBlockZIndex(childId, parent.zIndex + 1);
 
         // Auto-resize parent if needed
         autoResizeParent(parent);
@@ -1254,7 +1269,8 @@
         child.y = globalPos.y;
 
         // Move to top of z-order
-        child.zIndex = getMaxZIndex() + 1;
+        // Use centralized function that automatically propagates to descendants
+        setBlockZIndex(childId, getMaxZIndex() + 1);
 
         // Re-render
         renderCanvas();
@@ -1689,30 +1705,31 @@
         const block = state.blocks.find(b => b.id === blockId);
         if (!block) return;
 
-        // Handle z-index constraints
+        // Handle z-index separately with centralized propagation
+        let newZIndex = null;
         if (updates.zIndex !== undefined) {
+            newZIndex = updates.zIndex;
+
             // If block has a parent, ensure zIndex >= parent's zIndex
             if (block.parentBlockId) {
                 const parent = state.blocks.find(b => b.id === block.parentBlockId);
-                if (parent && updates.zIndex < parent.zIndex) {
-                    updates.zIndex = parent.zIndex + 1;
+                if (parent && newZIndex < parent.zIndex) {
+                    newZIndex = parent.zIndex + 1;
                 }
             }
 
-            // If block has children and zIndex is changing, propagate to children
-            const oldZIndex = block.zIndex || 0;
-            const newZIndex = updates.zIndex;
-            const zDelta = newZIndex - oldZIndex;
-
-            if (zDelta !== 0 && block.childBlockIds && block.childBlockIds.length > 0) {
-                const descendants = getDescendants(blockId);
-                for (const descendant of descendants) {
-                    descendant.zIndex = (descendant.zIndex || 0) + zDelta;
-                }
-            }
+            // Remove zIndex from updates temporarily - we'll handle it separately
+            const { zIndex, ...otherUpdates } = updates;
+            updates = otherUpdates;
         }
 
+        // Apply all non-zIndex updates
         Object.assign(block, updates);
+
+        // Apply z-index change with automatic descendant propagation
+        if (newZIndex !== null) {
+            setBlockZIndex(blockId, newZIndex);
+        }
 
         // Re-render entire canvas to maintain proper z-ordering
         // Individual renderBlock() calls would append elements, breaking z-order
