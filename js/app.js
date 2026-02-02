@@ -1194,7 +1194,18 @@
         child.y = localPos.y;
 
         // Inherit z-order from parent (child should render above parent)
-        child.zIndex = parent.zIndex + 1;
+        const oldZIndex = child.zIndex || 0;
+        const newZIndex = parent.zIndex + 1;
+        const zDelta = newZIndex - oldZIndex;
+        child.zIndex = newZIndex;
+
+        // Propagate z-index change to all descendants
+        if (zDelta !== 0) {
+            const descendants = getDescendants(childId);
+            for (const descendant of descendants) {
+                descendant.zIndex = (descendant.zIndex || 0) + zDelta;
+            }
+        }
 
         // Auto-resize parent if needed
         autoResizeParent(parent);
