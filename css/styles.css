@@ -89,6 +89,18 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+    cursor: text;
+}
+
+.diagram-item-name-input {
+    font-size: 13px;
+    flex: 1;
+    padding: 2px 4px;
+    border: 1px solid #4a90d9;
+    border-radius: 2px;
+    background: #2a2a2a;
+    color: #e0e0e0;
+    outline: none;
 }
 
 .diagram-item-delete {

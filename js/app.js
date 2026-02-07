@@ -621,6 +621,50 @@
             name.className = 'diagram-item-name';
             name.textContent = diagram.name;
 
+            // Make name editable on double-click
+            name.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'diagram-item-name-input';
+                input.value = diagram.name;
+
+                // Replace span with input
+                name.style.display = 'none';
+                item.insertBefore(input, name);
+                input.focus();
+                input.select();
+
+                // Save on blur or Enter key
+                const saveName = () => {
+                    const newName = input.value.trim();
+                    if (newName && newName !== diagram.name) {
+                        diagram.name = newName;
+                        saveAllDiagrams();
+                        renderDiagramList();
+                    } else {
+                        // Restore original display
+                        input.remove();
+                        name.style.display = '';
+                    }
+                };
+
+                input.addEventListener('blur', saveName);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        input.blur();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        input.remove();
+                        name.style.display = '';
+                    }
+                });
+
+                // Prevent input click from triggering diagram switch
+                input.addEventListener('click', (e) => e.stopPropagation());
+            });
+
             const deleteButton = document.createElement('button');
             deleteButton.className = 'diagram-item-delete';
             deleteButton.textContent = '\u00d7';
