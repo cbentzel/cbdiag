@@ -1673,9 +1673,9 @@
 
         // Build class list including any active preview states
         let blockClass = 'block' + (isProxy ? ' proxy' : '');
-        if (renderTimeParentingTarget === block.id) {
+        const isParentingTarget = renderTimeParentingTarget === block.id;
+        if (isParentingTarget) {
             blockClass += ' parenting-target';
-            console.log(`[CLASS] Adding parenting-target to block ${block.id}`);
         }
         if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
             blockClass += ' unparenting-preview';
@@ -1699,6 +1699,13 @@
         rect.setAttribute('fill', block.color);
         rect.setAttribute('fill-opacity', block.opacity !== undefined ? 1 - block.opacity : 1);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
+
+        // If this is a parenting target, sync animation to real time so it doesn't reset
+        if (isParentingTarget) {
+            const animationDuration = 1200; // 0.6s * 2 for alternate
+            const offset = Date.now() % animationDuration;
+            rect.style.animationDelay = `-${offset}ms`;
+        }
 
         // Use the block's label (which can be customized for proxy blocks)
         let labelText = block.label;
