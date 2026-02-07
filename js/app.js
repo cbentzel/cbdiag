@@ -729,6 +729,24 @@
         const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
         if (!currentCanvasContent) return;
 
+        // Compute parenting target at render time based on current positions
+        // This determines which block should show the parenting animation
+        renderTimeParentingTarget = null;
+        if (state.isDragging && state.selectedBlockId) {
+            const draggedBlock = state.blocks.find(b => b.id === state.selectedBlockId);
+            if (draggedBlock) {
+                const draggedBounds = getGlobalBounds(draggedBlock);
+                const centerPoint = {
+                    x: draggedBounds.x + draggedBounds.width / 2,
+                    y: draggedBounds.y + draggedBounds.height / 2
+                };
+                const potentialParent = findPotentialParent(draggedBlock, centerPoint);
+                if (potentialParent && potentialParent.id !== draggedBlock.parentBlockId) {
+                    renderTimeParentingTarget = potentialParent.id;
+                }
+            }
+        }
+
         // Preserve temp line if it exists (used during connection mode)
         const tempLineData = tempLine ? {
             d: tempLine.getAttribute('d'),
@@ -1647,7 +1665,7 @@
 
         // Build class list including any active preview states
         let blockClass = 'block' + (isProxy ? ' proxy' : '');
-        if (state.parentingTarget === block.id) {
+        if (renderTimeParentingTarget === block.id) {
             blockClass += ' parenting-target';
         }
         if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
@@ -2253,6 +2271,9 @@
     // Connection Mode
     // ============================================
     let tempLine = null;
+
+    // Computed at render time - which block would become parent if drag released now
+    let renderTimeParentingTarget = null;
 
     function enterConnectionMode() {
         state.mode = 'connecting';
