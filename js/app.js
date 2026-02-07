@@ -2373,13 +2373,36 @@
 
         // Properties panel - block properties
         if (blockLabel) {
+            let labelEditStart = null;
+
+            blockLabel.addEventListener('focus', (e) => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block && block.type !== 'proxy') {
+                        labelEditStart = { blockId: state.selectedBlockId, originalLabel: block.label };
+                    }
+                }
+            });
+
             blockLabel.addEventListener('input', (e) => {
                 if (state.selectedBlockId) {
                     const block = state.blocks.find(b => b.id === state.selectedBlockId);
                     if (block && block.type !== 'proxy') {
-                        updateBlock(state.selectedBlockId, { label: e.target.value });
+                        // Update visually without adding to undo stack
+                        updateBlockInternal(state.selectedBlockId, { label: e.target.value });
                     }
                 }
+            });
+
+            blockLabel.addEventListener('change', (e) => {
+                if (labelEditStart && labelEditStart.originalLabel !== e.target.value) {
+                    // Create single undo entry for the complete label change
+                    const cmd = new UpdateBlockCommand(labelEditStart.blockId,
+                        { label: e.target.value },
+                        { label: labelEditStart.originalLabel });
+                    pushCommand(cmd);
+                }
+                labelEditStart = null;
             });
         }
 
@@ -2407,10 +2430,33 @@
         }
 
         if (proxyLabel) {
+            let proxyLabelEditStart = null;
+
+            proxyLabel.addEventListener('focus', (e) => {
+                if (state.selectedBlockId) {
+                    const block = state.blocks.find(b => b.id === state.selectedBlockId);
+                    if (block) {
+                        proxyLabelEditStart = { blockId: state.selectedBlockId, originalLabel: block.label };
+                    }
+                }
+            });
+
             proxyLabel.addEventListener('input', (e) => {
                 if (state.selectedBlockId) {
-                    updateBlock(state.selectedBlockId, { label: e.target.value });
+                    // Update visually without adding to undo stack
+                    updateBlockInternal(state.selectedBlockId, { label: e.target.value });
                 }
+            });
+
+            proxyLabel.addEventListener('change', (e) => {
+                if (proxyLabelEditStart && proxyLabelEditStart.originalLabel !== e.target.value) {
+                    // Create single undo entry for the complete label change
+                    const cmd = new UpdateBlockCommand(proxyLabelEditStart.blockId,
+                        { label: e.target.value },
+                        { label: proxyLabelEditStart.originalLabel });
+                    pushCommand(cmd);
+                }
+                proxyLabelEditStart = null;
             });
         }
 
