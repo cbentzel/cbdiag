@@ -530,17 +530,20 @@ body {
 
 /* Nesting - Parenting Preview */
 .block.parenting-target rect {
-    animation: parentPulse 0.4s ease-in-out infinite alternate;
+    animation: parentPulse 0.6s ease-in-out infinite alternate;
+    filter: drop-shadow(0 0 8px #4CAF50);
 }
 
 @keyframes parentPulse {
     0% {
-        stroke-width: 3;
+        stroke-width: 4;
         stroke: #4CAF50;
+        filter: drop-shadow(0 0 6px #4CAF50);
     }
     100% {
-        stroke-width: 5;
-        stroke: #8BC34A;
+        stroke-width: 8;
+        stroke: #69F0AE;
+        filter: drop-shadow(0 0 16px #69F0AE);
     }
 }
 
