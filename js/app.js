@@ -1675,6 +1675,7 @@
         let blockClass = 'block' + (isProxy ? ' proxy' : '');
         if (renderTimeParentingTarget === block.id) {
             blockClass += ' parenting-target';
+            console.log(`[CLASS] Adding parenting-target to block ${block.id}`);
         }
         if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
             blockClass += ' unparenting-preview';
