@@ -1647,7 +1647,7 @@
 
         // Build class list including any active preview states
         let blockClass = 'block' + (isProxy ? ' proxy' : '');
-        if (state.isParentingPreview && state.parentingTarget === block.id) {
+        if (state.parentingTarget === block.id) {
             blockClass += ' parenting-target';
         }
         if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
