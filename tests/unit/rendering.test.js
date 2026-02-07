@@ -115,7 +115,7 @@ describe('Rendering Functions', () => {
 
             const proxyIcon = blockElement.querySelector('.proxy-icon');
             expect(proxyIcon).toBeDefined();
-            expect(proxyIcon.textContent).toContain('click to enter');
+            expect(proxyIcon.textContent).toBe('[Target Diagram]');
         });
 
         it('should show "(Missing)" for proxy with invalid linkedDiagramId', () => {

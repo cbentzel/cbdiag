@@ -1657,8 +1657,9 @@
 
         // Use the block's label (which can be customized for proxy blocks)
         let labelText = block.label;
+        let linkedDiagram = null;
         if (isProxy && block.linkedDiagramId) {
-            const linkedDiagram = state.diagrams.find(d => d.id === block.linkedDiagramId);
+            linkedDiagram = state.diagrams.find(d => d.id === block.linkedDiagramId);
             if (!linkedDiagram) {
                 labelText = '(Missing)';
             }
@@ -1682,7 +1683,8 @@
             icon.setAttribute('text-anchor', 'middle');
             icon.setAttribute('font-size', '10');
             icon.setAttribute('fill', 'rgba(255,255,255,0.7)');
-            icon.textContent = '[ click to enter ]';
+            // Show linked diagram name in brackets
+            icon.textContent = linkedDiagram ? `[${linkedDiagram.name}]` : '[Missing]';
             g.appendChild(icon);
         }
 
