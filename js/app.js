@@ -741,7 +741,8 @@
                     y: draggedBounds.y + draggedBounds.height / 2
                 };
                 const potentialParent = findPotentialParent(draggedBlock, centerPoint);
-                console.log('Parenting check:', {
+                state._parentingDebugCount = (state._parentingDebugCount || 0) + 1;
+                console.log(`[${state._parentingDebugCount}] Parenting check:`, {
                     isDragging: state.isDragging,
                     draggedId: draggedBlock.id,
                     center: centerPoint,
