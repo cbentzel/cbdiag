@@ -741,6 +741,13 @@
                     y: draggedBounds.y + draggedBounds.height / 2
                 };
                 const potentialParent = findPotentialParent(draggedBlock, centerPoint);
+                console.log('Parenting check:', {
+                    isDragging: state.isDragging,
+                    draggedId: draggedBlock.id,
+                    center: centerPoint,
+                    potentialParent: potentialParent?.id,
+                    currentParent: draggedBlock.parentBlockId
+                });
                 if (potentialParent && potentialParent.id !== draggedBlock.parentBlockId) {
                     renderTimeParentingTarget = potentialParent.id;
                 }
