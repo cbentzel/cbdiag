@@ -406,6 +406,7 @@
     const bringToFrontBtn = document.getElementById('bring-to-front');
     const sendToBackBtn = document.getElementById('send-to-back');
     const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
+    const proxyColor = document.getElementById('proxy-color');
     const connectionLineStyle = document.getElementById('connection-line-style');
     const connectionColor = document.getElementById('connection-color');
 
@@ -2082,6 +2083,7 @@
             if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
             if (proxyPropertiesDiv) proxyPropertiesDiv.classList.remove('hidden');
             if (proxyDiagramSelect) populateProxyDiagramSelect(proxyDiagramSelect, block.linkedDiagramId);
+            if (proxyColor) proxyColor.value = block.color;
         } else {
             if (blockPropertiesDiv) blockPropertiesDiv.classList.remove('hidden');
             if (proxyPropertiesDiv) proxyPropertiesDiv.classList.add('hidden');
@@ -2355,6 +2357,14 @@
                     if (block && block.type === 'proxy' && e.target.value) {
                         updateBlock(state.selectedBlockId, { linkedDiagramId: e.target.value });
                     }
+                }
+            });
+        }
+
+        if (proxyColor) {
+            proxyColor.addEventListener('input', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { color: e.target.value });
                 }
             });
         }
