@@ -50,6 +50,7 @@
         parentingTarget: null,
         parentingTimer: null,
         isUnparentingPreview: false,
+        currentParentingTarget: null, // For efficient class toggle during drag
 
         // Undo/Redo state
         undoStack: [],
@@ -728,32 +729,6 @@
     function renderCanvas() {
         const currentCanvasContent = canvasContent || document.getElementById('canvas-content');
         if (!currentCanvasContent) return;
-
-        // Compute parenting target at render time based on current positions
-        // This determines which block should show the parenting animation
-        renderTimeParentingTarget = null;
-        if (state.isDragging && state.selectedBlockId) {
-            const draggedBlock = state.blocks.find(b => b.id === state.selectedBlockId);
-            if (draggedBlock) {
-                const draggedBounds = getGlobalBounds(draggedBlock);
-                const centerPoint = {
-                    x: draggedBounds.x + draggedBounds.width / 2,
-                    y: draggedBounds.y + draggedBounds.height / 2
-                };
-                const potentialParent = findPotentialParent(draggedBlock, centerPoint);
-                state._parentingDebugCount = (state._parentingDebugCount || 0) + 1;
-                console.log(`[${state._parentingDebugCount}] Parenting check:`, {
-                    isDragging: state.isDragging,
-                    draggedId: draggedBlock.id,
-                    center: centerPoint,
-                    potentialParent: potentialParent?.id,
-                    currentParent: draggedBlock.parentBlockId
-                });
-                if (potentialParent && potentialParent.id !== draggedBlock.parentBlockId) {
-                    renderTimeParentingTarget = potentialParent.id;
-                }
-            }
-        }
 
         // Preserve temp line if it exists (used during connection mode)
         const tempLineData = tempLine ? {
@@ -1518,8 +1493,13 @@
             const targetEl = document.getElementById(state.parentingTarget);
             if (targetEl) targetEl.classList.remove('parenting-target');
         }
+        if (state.currentParentingTarget) {
+            const targetEl = document.getElementById(state.currentParentingTarget);
+            if (targetEl) targetEl.classList.remove('parenting-target');
+        }
         state.isParentingPreview = false;
         state.parentingTarget = null;
+        state.currentParentingTarget = null;
     }
 
     // Clear just the timer
@@ -1673,8 +1653,8 @@
 
         // Build class list including any active preview states
         let blockClass = 'block' + (isProxy ? ' proxy' : '');
-        const isParentingTarget = renderTimeParentingTarget === block.id;
-        if (isParentingTarget) {
+        // Parenting target class is now managed dynamically via updateParentingPreviewClass
+        if (state.currentParentingTarget === block.id) {
             blockClass += ' parenting-target';
         }
         if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
@@ -1699,13 +1679,6 @@
         rect.setAttribute('fill', block.color);
         rect.setAttribute('fill-opacity', block.opacity !== undefined ? 1 - block.opacity : 1);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
-
-        // If this is a parenting target, sync animation to real time so it doesn't reset
-        if (isParentingTarget) {
-            const animationDuration = 1200; // 0.6s * 2 for alternate
-            const offset = Date.now() % animationDuration;
-            rect.style.animationDelay = `-${offset}ms`;
-        }
 
         // Use the block's label (which can be customized for proxy blocks)
         let labelText = block.label;
@@ -1796,6 +1769,104 @@
         } else {
             hideProperties();
         }
+    }
+
+    // Efficient position update during drag - only updates DOM, doesn't recreate elements
+    function updateBlockPositionDuringDrag(blockId, newX, newY) {
+        const block = state.blocks.find(b => b.id === blockId);
+        if (!block) return;
+
+        // Update state
+        block.x = newX;
+        block.y = newY;
+
+        // Get global position for rendering
+        const globalPos = localToGlobal(block);
+        const gx = globalPos.x;
+        const gy = globalPos.y;
+
+        // Update existing SVG element positions directly
+        const g = document.getElementById(blockId);
+        if (!g) return;
+
+        const rect = g.querySelector('rect');
+        if (rect) {
+            rect.setAttribute('x', gx);
+            rect.setAttribute('y', gy);
+        }
+
+        const text = g.querySelector('text:not(.proxy-icon)');
+        if (text) {
+            text.setAttribute('x', gx + block.width / 2);
+            text.setAttribute('y', gy + 22);
+        }
+
+        const proxyIcon = g.querySelector('.proxy-icon');
+        if (proxyIcon) {
+            proxyIcon.setAttribute('x', gx + block.width / 2);
+            proxyIcon.setAttribute('y', gy + 38);
+        }
+
+        // Update resize handles
+        const handles = g.querySelectorAll('.resize-handle');
+        handles.forEach(handle => {
+            if (handle.classList.contains('resize-nw')) {
+                handle.setAttribute('x', gx - 4);
+                handle.setAttribute('y', gy - 4);
+            } else if (handle.classList.contains('resize-ne')) {
+                handle.setAttribute('x', gx + block.width - 4);
+                handle.setAttribute('y', gy - 4);
+            } else if (handle.classList.contains('resize-sw')) {
+                handle.setAttribute('x', gx - 4);
+                handle.setAttribute('y', gy + block.height - 4);
+            } else if (handle.classList.contains('resize-se')) {
+                handle.setAttribute('x', gx + block.width - 4);
+                handle.setAttribute('y', gy + block.height - 4);
+            }
+        });
+
+        // Update any connections to/from this block
+        state.connections.forEach(conn => {
+            if (conn.fromBlockId === blockId || conn.toBlockId === blockId) {
+                renderConnection(conn);
+            }
+        });
+
+        // Update children positions (they move with parent)
+        const children = state.blocks.filter(b => b.parentBlockId === blockId);
+        children.forEach(child => {
+            updateBlockPositionDuringDrag(child.id, child.x, child.y);
+        });
+    }
+
+    // Update parenting preview class efficiently (only on state transitions)
+    function updateParentingPreviewClass(newTargetId) {
+        const oldTargetId = state.currentParentingTarget;
+
+        if (oldTargetId === newTargetId) return; // No change
+
+        // Remove class from old target
+        if (oldTargetId) {
+            const oldEl = document.getElementById(oldTargetId);
+            if (oldEl) oldEl.classList.remove('parenting-target');
+        }
+
+        // Add class to new target
+        if (newTargetId) {
+            const newEl = document.getElementById(newTargetId);
+            if (newEl) {
+                newEl.classList.add('parenting-target');
+                // Set animation delay to sync with real time
+                const rect = newEl.querySelector('rect');
+                if (rect) {
+                    const animationDuration = 1200;
+                    const offset = Date.now() % animationDuration;
+                    rect.style.animationDelay = `-${offset}ms`;
+                }
+            }
+        }
+
+        state.currentParentingTarget = newTargetId;
     }
 
     function updateBlockInternal(blockId, updates, triggerSave = true) {
@@ -2288,8 +2359,6 @@
     // ============================================
     let tempLine = null;
 
-    // Computed at render time - which block would become parent if drag released now
-    let renderTimeParentingTarget = null;
 
     function enterConnectionMode() {
         state.mode = 'connecting';
@@ -2797,13 +2866,26 @@
                     newX = point.x - state.dragOffset.x;
                     newY = point.y - state.dragOffset.y;
                 }
-                // Use internal version - command created on mouseup
-                updateBlockInternal(state.selectedBlockId, { x: newX, y: newY }, false);
+
+                // Efficient position update - only updates DOM, doesn't recreate
+                updateBlockPositionDuringDrag(state.selectedBlockId, newX, newY);
 
                 // Make higher z-index overlapping blocks transparent
                 updateTransparencyDuringDrag(block);
 
-                // Handle parenting detection
+                // Efficient parenting preview - compute target and update class only on change
+                const draggedBounds = getGlobalBounds(block);
+                const centerPoint = {
+                    x: draggedBounds.x + draggedBounds.width / 2,
+                    y: draggedBounds.y + draggedBounds.height / 2
+                };
+                const potentialParent = findPotentialParent(block, centerPoint);
+                const newTargetId = (potentialParent && potentialParent.id !== block.parentBlockId)
+                    ? potentialParent.id
+                    : null;
+                updateParentingPreviewClass(newTargetId);
+
+                // Handle unparenting preview (still uses old approach for now)
                 handleParentingDuringDrag(block, point);
             }
             return;
