@@ -406,6 +406,7 @@
     const bringToFrontBtn = document.getElementById('bring-to-front');
     const sendToBackBtn = document.getElementById('send-to-back');
     const proxyDiagramSelect = document.getElementById('proxy-diagram-select');
+    const proxyLabel = document.getElementById('proxy-label');
     const proxyColor = document.getElementById('proxy-color');
     const connectionLineStyle = document.getElementById('connection-line-style');
     const connectionColor = document.getElementById('connection-color');
@@ -1654,14 +1655,11 @@
         rect.setAttribute('fill-opacity', block.opacity !== undefined ? 1 - block.opacity : 1);
         rect.setAttribute('stroke', darkenColor(block.color, 20));
 
-        // For proxy blocks, update label from linked diagram name
+        // Use the block's label (which can be customized for proxy blocks)
         let labelText = block.label;
         if (isProxy && block.linkedDiagramId) {
             const linkedDiagram = state.diagrams.find(d => d.id === block.linkedDiagramId);
-            if (linkedDiagram) {
-                labelText = linkedDiagram.name;
-                block.label = labelText;
-            } else {
+            if (!linkedDiagram) {
                 labelText = '(Missing)';
             }
         }
@@ -2126,6 +2124,7 @@
         if (isProxy) {
             if (blockPropertiesDiv) blockPropertiesDiv.classList.add('hidden');
             if (proxyPropertiesDiv) proxyPropertiesDiv.classList.remove('hidden');
+            if (proxyLabel) proxyLabel.value = block.label;
             if (proxyDiagramSelect) populateProxyDiagramSelect(proxyDiagramSelect, block.linkedDiagramId);
             if (proxyColor) proxyColor.value = block.color;
         } else {
@@ -2401,6 +2400,14 @@
                     if (block && block.type === 'proxy' && e.target.value) {
                         updateBlock(state.selectedBlockId, { linkedDiagramId: e.target.value });
                     }
+                }
+            });
+        }
+
+        if (proxyLabel) {
+            proxyLabel.addEventListener('input', (e) => {
+                if (state.selectedBlockId) {
+                    updateBlock(state.selectedBlockId, { label: e.target.value });
                 }
             });
         }

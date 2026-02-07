@@ -143,7 +143,8 @@ describe('Rendering Functions', () => {
             const proxyBlock = window.__cbdiag__.createBlock(100, 100);
             window.__cbdiag__.updateBlock(proxyBlock.id, {
                 type: 'proxy',
-                linkedDiagramId: diagram2Id
+                linkedDiagramId: diagram2Id,
+                label: 'Target Diagram' // Custom label for proxy block
             }, false);
             window.__cbdiag__.renderBlock(proxyBlock);
 
