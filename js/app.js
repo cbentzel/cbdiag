@@ -1442,8 +1442,11 @@
                     centerY < parentBounds.y || centerY > parentBounds.bottom) {
                     if (!state.isUnparentingPreview) {
                         state.isUnparentingPreview = true;
-                        const blockEl = document.getElementById(draggedBlock.id);
-                        if (blockEl) blockEl.classList.add('unparenting-preview');
+                    }
+                    // Always re-apply class in case renderCanvas() cleared it
+                    const blockEl = document.getElementById(draggedBlock.id);
+                    if (blockEl && !blockEl.classList.contains('unparenting-preview')) {
+                        blockEl.classList.add('unparenting-preview');
                     }
                     clearParentingTimer();
                     return;
@@ -1470,6 +1473,12 @@
                     const targetEl = document.getElementById(potentialParent.id);
                     if (targetEl) targetEl.classList.add('parenting-target');
                 }, NESTING_CONSTANTS.PARENTING_HOLD_DELAY);
+            } else if (state.isParentingPreview) {
+                // Re-apply class after renderCanvas() cleared it
+                const targetEl = document.getElementById(state.parentingTarget);
+                if (targetEl && !targetEl.classList.contains('parenting-target')) {
+                    targetEl.classList.add('parenting-target');
+                }
             }
         } else if (!potentialParent || potentialParent.id === draggedBlock.parentBlockId) {
             clearParentingPreview();
