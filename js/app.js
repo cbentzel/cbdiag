@@ -1644,7 +1644,16 @@
 
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('id', block.id);
-        g.setAttribute('class', 'block' + (isProxy ? ' proxy' : ''));
+
+        // Build class list including any active preview states
+        let blockClass = 'block' + (isProxy ? ' proxy' : '');
+        if (state.isParentingPreview && state.parentingTarget === block.id) {
+            blockClass += ' parenting-target';
+        }
+        if (state.isUnparentingPreview && state.selectedBlockId === block.id) {
+            blockClass += ' unparenting-preview';
+        }
+        g.setAttribute('class', blockClass);
         g.setAttribute('data-block-id', block.id);
         if (isProxy) {
             g.setAttribute('data-proxy', 'true');
